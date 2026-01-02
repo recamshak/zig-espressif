@@ -125,7 +125,7 @@ static cl::opt<bool>
 static cl::opt<bool> EnableHexagonCabac
   ("mcabac", cl::desc("tbd"), cl::init(false));
 
-static constexpr StringRef DefaultArch = "hexagonv68";
+static StringRef DefaultArch = "hexagonv60";
 
 static StringRef HexagonGetArchVariant() {
   if (MV5)

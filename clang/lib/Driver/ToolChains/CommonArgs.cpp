@@ -19,6 +19,7 @@
 #include "Arch/SystemZ.h"
 #include "Arch/VE.h"
 #include "Arch/X86.h"
+#include "Arch/Xtensa.h"
 #include "BareMetal.h"
 #include "HIPAMD.h"
 #include "Hexagon.h"
@@ -106,6 +107,7 @@ static bool useFramePointerForTargetByDefault(const llvm::opt::ArgList &Args,
   case llvm::Triple::loongarch32:
   case llvm::Triple::loongarch64:
   case llvm::Triple::m68k:
+  case llvm::Triple::xtensa:
     return !clang::driver::tools::areOptimizationsEnabled(Args);
   default:
     break;
@@ -800,6 +802,9 @@ void tools::getTargetFeatures(const Driver &D, const llvm::Triple &Triple,
   case llvm::Triple::loongarch32:
   case llvm::Triple::loongarch64:
     loongarch::getLoongArchTargetFeatures(D, Triple, Args, Features);
+    break;
+  case llvm::Triple::xtensa:
+    xtensa::getXtensaTargetFeatures(D, Triple, Args, Features);
     break;
   }
 
@@ -3016,6 +3021,19 @@ void tools::addMCModel(const Driver &D, const llvm::opt::ArgList &Args,
       CmdArgs.push_back("-mlarge-data-threshold=0");
     }
   }
+}
+
+void tools::addEspMultilibsPaths(const Driver &D, const MultilibSet &Multilibs,
+                                const Multilib &Multilib,
+                                StringRef CPU,
+                                StringRef InstallPath,
+                                ToolChain::path_list &Paths) {
+    if (const auto &PathsCallback = Multilibs.filePathsCallback())
+        for (const auto &Path : PathsCallback(Multilib)) {
+            SmallString<256> LibPath(D.ResourceDir);
+            llvm::sys::path::append(LibPath, D.getTargetTriple(), CPU, Path, "lib");
+            addPathIfExists(D, LibPath, Paths);
+        }
 }
 
 void tools::handleColorDiagnosticsArgs(const Driver &D, const ArgList &Args,

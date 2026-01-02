@@ -9616,9 +9616,9 @@ ModuleFile *ASTReader::getLocalModuleFile(ModuleFile &M, unsigned ID) const {
     return I == GlobalSubmoduleMap.end() ? nullptr : I->second;
   } else {
     // It's a prefix (preamble, PCH, ...). Look it up by index.
-   int IndexFromEnd = static_cast<int>(ID >> 1);
+    unsigned IndexFromEnd = ID >> 1;
     assert(IndexFromEnd && "got reference to unknown module file");
-    return getModuleManager().pch_modules().end()[-static_cast<int>(IndexFromEnd)];
+    return getModuleManager().pch_modules().end()[-IndexFromEnd];
   }
 }
 
@@ -9636,7 +9636,7 @@ unsigned ASTReader::getModuleFileID(ModuleFile *M) {
   auto PCHModules = getModuleManager().pch_modules();
   auto I = llvm::find(PCHModules, M);
   assert(I != PCHModules.end() && "emitting reference to unknown file");
-  return std::distance(I, PCHModules.end()) << 1;
+  return (I - PCHModules.end()) << 1;
 }
 
 std::optional<ASTSourceDescriptor> ASTReader::getSourceDescriptor(unsigned ID) {

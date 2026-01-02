@@ -14,6 +14,7 @@
 #include "XtensaTargetStreamer.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
@@ -66,6 +67,43 @@ bool Xtensa::isValidAddrOffsetForOpcode(unsigned Opcode, int64_t Offset) {
     break;
   case Xtensa::LEA_ADD:
     return (Offset >= -128 && Offset <= 127);
+  case Xtensa::AE_L64_I:
+  case Xtensa::AE_S64_I:
+  case Xtensa::AE_S32X2_I:
+  case Xtensa::AE_L32X2_I:
+  case Xtensa::AE_S16X4_I:
+  case Xtensa::AE_L16X4_I:
+  case Xtensa::AE_LALIGN64_I:
+  case Xtensa::AE_SALIGN64_I:
+    return (Offset >= -64 && Offset <= 56);
+  case Xtensa::AE_S64_IP:
+  case Xtensa::AE_L64_IP:
+  case Xtensa::AE_S32X2_IP:
+  case Xtensa::AE_L32X2_IP:
+  case Xtensa::AE_S16X4_IP:
+  case Xtensa::AE_L16X4_IP:
+    return (Offset >= 0 && Offset <= 56);
+  case Xtensa::AE_L16X2M_I:
+  case Xtensa::AE_L16X2M_IU:
+  case Xtensa::AE_L32F24_I:
+  case Xtensa::AE_L32F24_IP:
+  case Xtensa::AE_L32M_I:
+  case Xtensa::AE_L32M_IU:
+  case Xtensa::AE_L32_I:
+  case Xtensa::AE_L32_IP:
+  case Xtensa::AE_S16X2M_I:
+  case Xtensa::AE_S16X2M_IU:
+  case Xtensa::AE_S24RA64S_I:
+  case Xtensa::AE_S24RA64S_IP:
+  case Xtensa::AE_S32F24_L_I:
+  case Xtensa::AE_S32F24_L_IP:
+  case Xtensa::AE_S32M_I:
+  case Xtensa::AE_S32M_IU:
+  case Xtensa::AE_S32RA64S_I:
+  case Xtensa::AE_S32RA64S_IP:
+  case Xtensa::AE_S32_L_I:
+  case Xtensa::AE_S32_L_IP:
+    return (Offset >= -32 && Offset <= 28);
   default:
     // assume that MI is 32-bit load/store operation
     Scale = 4;
@@ -78,6 +116,9 @@ static MCAsmInfo *createXtensaMCAsmInfo(const MCRegisterInfo &MRI,
                                         const Triple &TT,
                                         const MCTargetOptions &Options) {
   MCAsmInfo *MAI = new XtensaMCAsmInfo(TT);
+  MCCFIInstruction Inst = MCCFIInstruction::cfiDefCfa(
+      nullptr, MRI.getDwarfRegNum(Xtensa::SP, true), 0);
+  MAI->addInitialFrameState(Inst);
   return MAI;
 }
 
@@ -103,6 +144,12 @@ static MCRegisterInfo *createXtensaMCRegisterInfo(const Triple &TT) {
 
 static MCSubtargetInfo *
 createXtensaMCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef FS) {
+  if (CPU.empty())
+    CPU = "esp32";
+  else if (CPU == "esp32-s2")
+    CPU = "esp32s2";
+  else if (CPU == "esp32-s3")
+    CPU = "esp32s3";
   return createXtensaMCSubtargetInfoImpl(TT, CPU, CPU, FS);
 }
 
@@ -115,6 +162,10 @@ createXtensaAsmTargetStreamer(MCStreamer &S, formatted_raw_ostream &OS,
 static MCTargetStreamer *
 createXtensaObjectTargetStreamer(MCStreamer &S, const MCSubtargetInfo &STI) {
   return new XtensaTargetELFStreamer(S);
+}
+
+static MCTargetStreamer *createXtensaNullTargetStreamer(MCStreamer &S) {
+  return new XtensaTargetStreamer(S);
 }
 
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeXtensaTargetMC() {
@@ -153,4 +204,8 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeXtensaTargetMC() {
   // Register the ELF target streamer.
   TargetRegistry::RegisterObjectTargetStreamer(
       getTheXtensaTarget(), createXtensaObjectTargetStreamer);
+
+  // Register the null target streamer.
+  TargetRegistry::RegisterNullTargetStreamer(getTheXtensaTarget(),
+                                              createXtensaNullTargetStreamer);
 }

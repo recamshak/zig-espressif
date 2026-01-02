@@ -2114,14 +2114,10 @@ std::error_code parseConfiguration(llvm::MemoryBufferRef Config,
   FormatStyle::FormatStyleSet StyleSet;
   bool LanguageFound = false;
   for (const FormatStyle &Style : llvm::reverse(Styles)) {
-    const auto Lang = Style.Language;
-    if (Lang != FormatStyle::LK_None)
+    if (Style.Language != FormatStyle::LK_None)
       StyleSet.Add(Style);
-    if (Lang == Language ||
-        // For backward compatibility.
-        (Lang == FormatStyle::LK_Cpp && Language == FormatStyle::LK_C)) {
+    if (Style.Language == Language)
       LanguageFound = true;
-    }
   }
   if (!LanguageFound) {
     if (Styles.empty() || Styles[0].Language != FormatStyle::LK_None)
@@ -2161,14 +2157,8 @@ FormatStyle::FormatStyleSet::Get(FormatStyle::LanguageKind Language) const {
   if (!Styles)
     return std::nullopt;
   auto It = Styles->find(Language);
-  if (It == Styles->end()) {
-    if (Language != FormatStyle::LK_C)
-      return std::nullopt;
-    // For backward compatibility.
-    It = Styles->find(FormatStyle::LK_Cpp);
-    if (It == Styles->end())
-      return std::nullopt;
-  }
+  if (It == Styles->end())
+    return std::nullopt;
   FormatStyle Style = It->second;
   Style.StyleSet = *this;
   return Style;

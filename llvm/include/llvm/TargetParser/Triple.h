@@ -193,6 +193,7 @@ public:
     Mesa,
     SUSE,
     OpenEmbedded,
+    Espressif,
     Intel,
     LastVendorType = Intel
   };
@@ -912,8 +913,7 @@ public:
             getEnvironment() == Triple::GNUEABIHFT64 ||
             getEnvironment() == Triple::OpenHOS ||
             getEnvironment() == Triple::MuslEABIHF || isAndroid()) &&
-           isOSBinFormatELF() &&
-           !isOSNetBSD();
+           isOSBinFormatELF();
   }
 
   /// Tests whether the target is T32.
@@ -1093,6 +1093,9 @@ public:
   bool isBPF() const {
     return getArch() == Triple::bpfel || getArch() == Triple::bpfeb;
   }
+
+  /// Tests whether the target is Xtensa.
+  bool isXtensa() const { return getArch() == Triple::xtensa; }
 
   /// Tests if the target forces 64-bit time_t on a 32-bit architecture.
   bool isTime64ABI() const {

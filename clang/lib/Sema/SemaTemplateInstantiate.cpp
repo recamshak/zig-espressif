@@ -1347,16 +1347,6 @@ std::optional<TemplateDeductionInfo *> Sema::isSFINAEContext() const {
   return std::nullopt;
 }
 
-static TemplateArgument
-getPackSubstitutedTemplateArgument(Sema &S, TemplateArgument Arg) {
-  assert(S.ArgumentPackSubstitutionIndex >= 0);
-  assert(S.ArgumentPackSubstitutionIndex < (int)Arg.pack_size());
-  Arg = Arg.pack_begin()[S.ArgumentPackSubstitutionIndex];
-  if (Arg.isPackExpansion())
-    Arg = Arg.getPackExpansionPattern();
-  return Arg;
-}
-
 //===----------------------------------------------------------------------===/
 // Template Instantiation for Types
 //===----------------------------------------------------------------------===/
@@ -1476,13 +1466,11 @@ namespace {
       }
     }
 
-    TemplateArgument
+    static TemplateArgument
     getTemplateArgumentPackPatternForRewrite(const TemplateArgument &TA) {
       if (TA.getKind() != TemplateArgument::Pack)
         return TA;
-      if (SemaRef.ArgumentPackSubstitutionIndex != -1)
-        return getPackSubstitutedTemplateArgument(SemaRef, TA);
-      assert(TA.pack_size() == 1 && TA.pack_begin()->isPackExpansion() &&
+      assert(TA.pack_size() == 1 &&
              "unexpected pack arguments in template rewrite");
       TemplateArgument Arg = *TA.pack_begin();
       if (Arg.isPackExpansion())
@@ -1641,9 +1629,6 @@ namespace {
       std::vector<TemplateArgument> TArgs;
       switch (Arg.getKind()) {
       case TemplateArgument::Pack:
-        assert(SemaRef.CodeSynthesisContexts.empty() ||
-               SemaRef.CodeSynthesisContexts.back().Kind ==
-                   Sema::CodeSynthesisContext::BuildingDeductionGuides);
         // Literally rewrite the template argument pack, instead of unpacking
         // it.
         for (auto &pack : Arg.getPackAsArray()) {
@@ -1662,23 +1647,6 @@ namespace {
         break;
       }
       return inherited::TransformTemplateArgument(Input, Output, Uneval);
-    }
-
-    std::optional<unsigned> ComputeSizeOfPackExprWithoutSubstitution(
-        ArrayRef<TemplateArgument> PackArgs) {
-      // Don't do this when rewriting template parameters for CTAD:
-      //   1) The heuristic needs the unpacked Subst* nodes to figure out the
-      //   expanded size, but this never applies since Subst* nodes are not
-      //   created in rewrite scenarios.
-      //
-      //   2) The heuristic substitutes into the pattern with pack expansion
-      //   suppressed, which does not meet the requirements for argument
-      //   rewriting when template arguments include a non-pack matching against
-      //   a pack, particularly when rewriting an alias CTAD.
-      if (TemplateArgs.isRewrite())
-        return std::nullopt;
-
-      return inherited::ComputeSizeOfPackExprWithoutSubstitution(PackArgs);
     }
 
     template<typename Fn>
@@ -1897,6 +1865,16 @@ bool TemplateInstantiator::AlreadyTransformed(QualType T) {
 
   getSema().MarkDeclarationsReferencedInType(Loc, T);
   return true;
+}
+
+static TemplateArgument
+getPackSubstitutedTemplateArgument(Sema &S, TemplateArgument Arg) {
+  assert(S.ArgumentPackSubstitutionIndex >= 0);
+  assert(S.ArgumentPackSubstitutionIndex < (int)Arg.pack_size());
+  Arg = Arg.pack_begin()[S.ArgumentPackSubstitutionIndex];
+  if (Arg.isPackExpansion())
+    Arg = Arg.getPackExpansionPattern();
+  return Arg;
 }
 
 Decl *TemplateInstantiator::TransformDecl(SourceLocation Loc, Decl *D) {

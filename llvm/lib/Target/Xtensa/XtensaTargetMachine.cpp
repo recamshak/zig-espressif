@@ -12,7 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "XtensaMachineFunctionInfo.h"
 #include "XtensaTargetMachine.h"
+#include "XtensaTargetObjectFile.h"
+#include "XtensaTargetTransformInfo.h"
 #include "TargetInfo/XtensaTargetInfo.h"
 #include "XtensaMachineFunctionInfo.h"
 #include "llvm/CodeGen/Passes.h"
@@ -32,7 +35,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeXtensaTarget() {
 static std::string computeDataLayout(const Triple &TT, StringRef CPU,
                                      const TargetOptions &Options,
                                      bool IsLittle) {
-  std::string Ret = "e-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-n32";
+  std::string Ret = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32";
   return Ret;
 }
 
@@ -41,6 +44,20 @@ static Reloc::Model getEffectiveRelocModel(bool JIT,
   if (!RM || JIT)
      return Reloc::Static;
   return *RM;
+}
+
+static std::unique_ptr<TargetLoweringObjectFile> createTLOF() {
+  return std::make_unique<XtensaElfTargetObjectFile>();
+}
+
+static StringRef getCPUName(StringRef CPU) {
+  if (CPU.empty())
+    CPU = "esp32";
+  else if (CPU == "esp32-s2")
+    CPU = "esp32s2";
+  else if (CPU == "esp32-s3")
+    CPU = "esp32s3";
+  return CPU;
 }
 
 XtensaTargetMachine::XtensaTargetMachine(const Target &T, const Triple &TT,
@@ -64,7 +81,7 @@ XtensaTargetMachine::XtensaTargetMachine(const Target &T, const Triple &TT,
                                          std::optional<Reloc::Model> RM,
                                          std::optional<CodeModel::Model> CM,
                                          CodeGenOptLevel OL, bool JIT)
-    : XtensaTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, JIT, true) {}
+    : XtensaTargetMachine(T, TT, getCPUName(CPU), FS, Options, RM, CM, OL, JIT, true) {}
 
 const XtensaSubtarget *
 XtensaTargetMachine::getSubtargetImpl(const Function &F) const {
@@ -85,6 +102,11 @@ XtensaTargetMachine::getSubtargetImpl(const Function &F) const {
   return I.get();
 }
 
+TargetTransformInfo
+XtensaTargetMachine::getTargetTransformInfo(const Function &F) const {
+  return TargetTransformInfo(XtensaTTIImpl(this, F));
+}
+
 MachineFunctionInfo *XtensaTargetMachine::createMachineFunctionInfo(
     BumpPtrAllocator &Allocator, const Function &F,
     const TargetSubtargetInfo *STI) const {
@@ -103,17 +125,44 @@ public:
     return getTM<XtensaTargetMachine>();
   }
 
+  void addIRPasses() override;
+  bool addPreISel() override;
   bool addInstSelector() override;
+  void addPreRegAlloc() override;
   void addPreEmitPass() override;
 };
 } // end anonymous namespace
+
+bool XtensaPassConfig::addPreISel() {
+  if (TM->getOptLevel() != CodeGenOptLevel::None) {
+    addPass(createHardwareLoopsLegacyPass());
+  }
+
+  return false;
+}
 
 bool XtensaPassConfig::addInstSelector() {
   addPass(createXtensaISelDag(getXtensaTargetMachine(), getOptLevel()));
   return false;
 }
 
-void XtensaPassConfig::addPreEmitPass() { addPass(&BranchRelaxationPassID); }
+void XtensaPassConfig::addIRPasses() {
+    addPass(createAtomicExpandLegacyPass());
+    TargetPassConfig::addIRPasses();
+}
+
+void XtensaPassConfig::addPreRegAlloc() {
+  addPass(createXtensaHardwareLoops());
+}
+
+void XtensaPassConfig::addPreEmitPass() {
+  addPass(createXtensaPSRAMCacheFixPass());
+  addPass(createXtensaBRegFixupPass());
+  addPass(createXtensaSizeReductionPass());
+  addPass(createXtensaFixupHwLoops());
+  addPass(&BranchRelaxationPassID);
+  addPass(createXtensaConstantIslandPass());
+}
 
 TargetPassConfig *XtensaTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new XtensaPassConfig(*this, PM);

@@ -17,7 +17,6 @@
 #include "XtensaMachineFunctionInfo.h"
 #include "XtensaTargetMachine.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
-#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
@@ -100,9 +99,13 @@ void XtensaInstrInfo::adjustStackPtr(unsigned SP, int64_t Amount,
         .addReg(Reg1, RegState::Kill);
   }
 
-  BuildMI(MBB, I, DL, get(Xtensa::OR), SP)
-      .addReg(Reg, RegState::Kill)
-      .addReg(Reg, RegState::Kill);
+  if (STI.isWinABI()) {
+    BuildMI(MBB, I, DL, get(Xtensa::MOVSP), SP).addReg(Reg, RegState::Kill);
+  } else {
+    BuildMI(MBB, I, DL, get(Xtensa::OR), SP)
+        .addReg(Reg, RegState::Kill)
+        .addReg(Reg, RegState::Kill);
+  }
 }
 
 void XtensaInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
@@ -110,14 +113,45 @@ void XtensaInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                   const DebugLoc &DL, MCRegister DestReg,
                                   MCRegister SrcReg, bool KillSrc,
                                   bool RenamableDest, bool RenamableSrc) const {
-  // The MOV instruction is not present in core ISA,
-  // so use OR instruction.
-  if (Xtensa::ARRegClass.contains(DestReg, SrcReg))
+  unsigned Opcode;
+
+  // when we are copying a phys reg we want the bits for fp
+  if (Xtensa::ARRegClass.contains(DestReg, SrcReg)) {
     BuildMI(MBB, MBBI, DL, get(Xtensa::OR), DestReg)
         .addReg(SrcReg, getKillRegState(KillSrc))
         .addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  } else if (STI.hasSingleFloat() && Xtensa::FPRRegClass.contains(SrcReg) &&
+             Xtensa::FPRRegClass.contains(DestReg))
+    Opcode = Xtensa::MOV_S;
+  else if (STI.hasSingleFloat() && Xtensa::FPRRegClass.contains(SrcReg) &&
+           Xtensa::ARRegClass.contains(DestReg))
+    Opcode = Xtensa::RFR;
+  else if (STI.hasSingleFloat() && Xtensa::ARRegClass.contains(SrcReg) &&
+           Xtensa::FPRRegClass.contains(DestReg))
+    Opcode = Xtensa::WFR;
+  else if (STI.hasBoolean() && Xtensa::BRRegClass.contains(SrcReg) &&
+           Xtensa::BRRegClass.contains(DestReg)) {
+    BuildMI(MBB, MBBI, DL, get(Xtensa::ORB), DestReg)
+        .addReg(SrcReg, getKillRegState(KillSrc))
+        .addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  } else if (STI.hasHIFI3() && Xtensa::AE_DRRegClass.contains(DestReg, SrcReg))
+    Opcode = Xtensa::AE_MOV;
+  else if (STI.hasHIFI3() && Xtensa::AE_DRRegClass.contains(DestReg) &&
+           Xtensa::ARRegClass.contains(SrcReg))
+    Opcode = Xtensa::AE_MOVDA32;
+  else if (STI.hasHIFI3() && Xtensa::AE_DRRegClass.contains(SrcReg) &&
+           Xtensa::ARRegClass.contains(DestReg))
+    Opcode = Xtensa::AE_MOVAD32_L;
+  else if (STI.hasHIFI3() &&
+           Xtensa::AE_VALIGNRegClass.contains(DestReg, SrcReg))
+    Opcode = Xtensa::AE_MOVALIGN;
   else
     report_fatal_error("Impossible reg-to-reg copy");
+
+  BuildMI(MBB, MBBI, DL, get(Opcode), DestReg)
+      .addReg(SrcReg, getKillRegState(KillSrc));
 }
 
 void XtensaInstrInfo::storeRegToStackSlot(
@@ -147,11 +181,57 @@ void XtensaInstrInfo::getLoadStoreOpcodes(const TargetRegisterClass *RC,
                                           unsigned &LoadOpcode,
                                           unsigned &StoreOpcode,
                                           int64_t offset) const {
-  assert((RC == &Xtensa::ARRegClass) &&
-         "Unsupported regclass to load or store");
+  if (RC == &Xtensa::ARRegClass) {
+    LoadOpcode = Xtensa::L32I;
+    StoreOpcode = Xtensa::S32I;
+  } else if (RC == &Xtensa::FPRRegClass) {
+    LoadOpcode = Xtensa::LSI;
+    StoreOpcode = Xtensa::SSI;
+  } else if (RC == &Xtensa::BRRegClass) {
+    LoadOpcode = Xtensa::RESTORE_BOOL;
+    StoreOpcode = Xtensa::SPILL_BOOL;
+  } else if (RC == &Xtensa::AE_DRRegClass) {
+    LoadOpcode = Xtensa::AE_L64_I;
+    StoreOpcode = Xtensa::AE_S64_I;
+  } else if (RC == &Xtensa::AE_VALIGNRegClass) {
+    LoadOpcode = Xtensa::AE_LALIGN64_I;
+    StoreOpcode = Xtensa::AE_SALIGN64_I;
+  } else
+    llvm_unreachable("Unsupported regclass to load or store");
+}
 
-  LoadOpcode = Xtensa::L32I;
-  StoreOpcode = Xtensa::S32I;
+MachineInstrBuilder
+XtensaInstrInfo::buildLoadImmediate(MachineBasicBlock &MBB,
+                                    MachineBasicBlock::iterator MBBI,
+                                    unsigned Reg, int64_t Value) const {
+  DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
+
+  if (Value >= -2048 && Value <= 2047) {
+    return BuildMI(MBB, MBBI, DL, get(Xtensa::MOVI), Reg).addImm(Value);
+  } else if (Value >= -32768 && Value <= 32767) {
+    int Low = Value & 0xFF;
+    int High = Value & ~0xFF;
+
+    BuildMI(MBB, MBBI, DL, get(Xtensa::MOVI), Reg).addImm(Low);
+    return BuildMI(MBB, MBBI, DL, get(Xtensa::ADDMI), Reg)
+        .addReg(Reg)
+        .addImm(High);
+  } else if (Value >= -4294967296LL && Value <= 4294967295LL) {
+    // 32 bit arbitrary constant
+    MachineConstantPool *MCP = MBB.getParent()->getConstantPool();
+    uint64_t UVal = ((uint64_t)Value) & 0xFFFFFFFFLL;
+    const Constant *CVal = ConstantInt::get(
+        Type::getInt32Ty(MBB.getParent()->getFunction().getContext()), UVal,
+        false);
+    unsigned Idx = MCP->getConstantPoolIndex(CVal, Align(2U));
+    //	MCSymbol MSym
+    return BuildMI(MBB, MBBI, DL, get(Xtensa::L32R), Reg)
+        .addConstantPoolIndex(Idx);
+  } else {
+    // use L32R to let assembler load immediate best
+    // TODO replace to L32R
+    report_fatal_error("Unsupported load immediate value");
+  }
 }
 
 void XtensaInstrInfo::loadImmediate(MachineBasicBlock &MBB,
@@ -163,29 +243,7 @@ void XtensaInstrInfo::loadImmediate(MachineBasicBlock &MBB,
 
   // create virtual reg to store immediate
   *Reg = RegInfo.createVirtualRegister(RC);
-  if (Value >= -2048 && Value <= 2047) {
-    BuildMI(MBB, MBBI, DL, get(Xtensa::MOVI), *Reg).addImm(Value);
-  } else if (Value >= -32768 && Value <= 32767) {
-    int Low = Value & 0xFF;
-    int High = Value & ~0xFF;
-
-    BuildMI(MBB, MBBI, DL, get(Xtensa::MOVI), *Reg).addImm(Low);
-    BuildMI(MBB, MBBI, DL, get(Xtensa::ADDMI), *Reg).addReg(*Reg).addImm(High);
-  } else if (Value >= -4294967296LL && Value <= 4294967295LL) {
-    // 32 bit arbitrary constant
-    MachineConstantPool *MCP = MBB.getParent()->getConstantPool();
-    uint64_t UVal = ((uint64_t)Value) & 0xFFFFFFFFLL;
-    const Constant *CVal = ConstantInt::get(
-        Type::getInt32Ty(MBB.getParent()->getFunction().getContext()), UVal,
-        false);
-    unsigned Idx = MCP->getConstantPoolIndex(CVal, Align(2U));
-    //	MCSymbol MSym
-    BuildMI(MBB, MBBI, DL, get(Xtensa::L32R), *Reg).addConstantPoolIndex(Idx);
-  } else {
-    // use L32R to let assembler load immediate best
-    // TODO replace to L32R
-    report_fatal_error("Unsupported load immediate value");
-  }
+  buildLoadImmediate(MBB, MBBI, *Reg, Value);
 }
 
 unsigned XtensaInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
@@ -253,6 +311,18 @@ bool XtensaInstrInfo::reverseBranchCondition(
   case Xtensa::BGEZ:
     Cond[0].setImm(Xtensa::BLTZ);
     return false;
+
+  case Xtensa::BF:
+    Cond[0].setImm(Xtensa::BT);
+    return false;
+  case Xtensa::BT:
+    Cond[0].setImm(Xtensa::BF);
+    return false;
+
+  case Xtensa::LOOPEND:
+  case Xtensa::LOOPBR:
+    return true;
+
   default:
     report_fatal_error("Invalid branch condition!");
   }
@@ -266,6 +336,7 @@ XtensaInstrInfo::getBranchDestBlock(const MachineInstr &MI) const {
   case Xtensa::JX:
     return nullptr;
   case Xtensa::J:
+  case Xtensa::LOOPEND:
     return MI.getOperand(0).getMBB();
   case Xtensa::BEQ:
   case Xtensa::BNE:
@@ -285,7 +356,13 @@ XtensaInstrInfo::getBranchDestBlock(const MachineInstr &MI) const {
   case Xtensa::BNEZ:
   case Xtensa::BLTZ:
   case Xtensa::BGEZ:
+  case Xtensa::LOOPBR:
     return MI.getOperand(1).getMBB();
+
+  case Xtensa::BT:
+  case Xtensa::BF:
+    return MI.getOperand(1).getMBB();
+
   default:
     llvm_unreachable("Unknown branch opcode");
   }
@@ -298,6 +375,12 @@ bool XtensaInstrInfo::isBranchOffsetInRange(unsigned BranchOp,
     BrOffset -= 4;
     return isIntN(18, BrOffset);
   case Xtensa::JX:
+    return true;
+  case Xtensa::LOOPEND:
+    assert((BrOffset <= 0) && "Wrong hardware loop");
+    return true;
+  case Xtensa::LOOPBR:
+    BrOffset += 4;
     return true;
   case Xtensa::BR_JT:
     return true;
@@ -321,6 +404,10 @@ bool XtensaInstrInfo::isBranchOffsetInRange(unsigned BranchOp,
   case Xtensa::BGEZ:
     BrOffset -= 4;
     return isIntN(12, BrOffset);
+  case Xtensa::BT:
+  case Xtensa::BF:
+    BrOffset -= 4;
+    return isIntN(8, BrOffset);
   default:
     llvm_unreachable("Unknown branch opcode");
   }
@@ -571,6 +658,10 @@ unsigned XtensaInstrInfo::insertConstBranchAtInst(
   case Xtensa::BGEZ:
     MI = BuildMI(MBB, I, DL, get(BR_C)).addImm(offset).addReg(Cond[1].getReg());
     break;
+  case Xtensa::BT:
+  case Xtensa::BF:
+    MI = BuildMI(MBB, I, DL, get(BR_C)).addImm(offset).addReg(Cond[1].getReg());
+    break;
   default:
     llvm_unreachable("Invalid branch type!");
   }
@@ -610,6 +701,7 @@ unsigned XtensaInstrInfo::insertBranchAtInst(MachineBasicBlock &MBB,
   case Xtensa::BGE:
   case Xtensa::BGEU:
     MI = BuildMI(MBB, I, DL, get(BR_C))
+            //  .addImm(offset)
              .addReg(Cond[1].getReg())
              .addReg(Cond[2].getReg())
              .addMBB(TBB);
@@ -621,6 +713,7 @@ unsigned XtensaInstrInfo::insertBranchAtInst(MachineBasicBlock &MBB,
   case Xtensa::BGEI:
   case Xtensa::BGEUI:
     MI = BuildMI(MBB, I, DL, get(BR_C))
+            //  .addImm(offset)
              .addReg(Cond[1].getReg())
              .addImm(Cond[2].getImm())
              .addMBB(TBB);
@@ -629,7 +722,15 @@ unsigned XtensaInstrInfo::insertBranchAtInst(MachineBasicBlock &MBB,
   case Xtensa::BNEZ:
   case Xtensa::BLTZ:
   case Xtensa::BGEZ:
+  case Xtensa::LOOPBR:
     MI = BuildMI(MBB, I, DL, get(BR_C)).addReg(Cond[1].getReg()).addMBB(TBB);
+    break;
+  case Xtensa::BT:
+  case Xtensa::BF:
+    MI = BuildMI(MBB, I, DL, get(BR_C)).addReg(Cond[1].getReg()).addMBB(TBB);
+    break;
+  case Xtensa::LOOPEND:
+    MI = BuildMI(MBB, I, DL, get(Xtensa::LOOPEND)).addMBB(TBB);
     break;
   default:
     report_fatal_error("Invalid branch type!");
@@ -640,6 +741,48 @@ unsigned XtensaInstrInfo::insertBranchAtInst(MachineBasicBlock &MBB,
   return Count;
 }
 
+bool XtensaInstrInfo::analyzeCompare(const MachineInstr &MI, Register &SrcReg,
+                                     Register &SrcReg2, int64_t &Mask,
+                                     int64_t &Value) const {
+  unsigned Opc = MI.getOpcode();
+
+  switch (Opc) {
+  case Xtensa::BEQ:
+  case Xtensa::BNE:
+  case Xtensa::BLT:
+  case Xtensa::BLTU:
+  case Xtensa::BGE:
+  case Xtensa::BGEU:
+    SrcReg = MI.getOperand(0).getReg();
+    SrcReg2 = MI.getOperand(1).getReg();
+    Value = 0;
+    Mask = 0;
+    return true;
+
+  case Xtensa::BEQI:
+  case Xtensa::BNEI:
+  case Xtensa::BLTI:
+  case Xtensa::BLTUI:
+  case Xtensa::BGEI:
+  case Xtensa::BGEUI:
+    SrcReg = MI.getOperand(0).getReg();
+    Value = MI.getOperand(1).getImm();
+    Mask = ~0;
+    return true;
+
+  case Xtensa::BEQZ:
+  case Xtensa::BNEZ:
+  case Xtensa::BLTZ:
+  case Xtensa::BGEZ:
+    SrcReg = MI.getOperand(0).getReg();
+    Value = 0;
+    Mask = ~0;
+    return true;
+  }
+
+  return false;
+}
+
 bool XtensaInstrInfo::isBranch(const MachineBasicBlock::iterator &MI,
                                SmallVectorImpl<MachineOperand> &Cond,
                                const MachineOperand *&Target) const {
@@ -648,6 +791,7 @@ bool XtensaInstrInfo::isBranch(const MachineBasicBlock::iterator &MI,
   case Xtensa::J:
   case Xtensa::JX:
   case Xtensa::BR_JT:
+  case Xtensa::LOOPEND:
     Cond[0].setImm(OpCode);
     Target = &MI->getOperand(0);
     return true;
@@ -675,6 +819,13 @@ bool XtensaInstrInfo::isBranch(const MachineBasicBlock::iterator &MI,
   case Xtensa::BNEZ:
   case Xtensa::BLTZ:
   case Xtensa::BGEZ:
+  case Xtensa::LOOPBR:
+    Cond[0].setImm(OpCode);
+    Target = &MI->getOperand(1);
+    return true;
+
+  case Xtensa::BT:
+  case Xtensa::BF:
     Cond[0].setImm(OpCode);
     Target = &MI->getOperand(1);
     return true;
