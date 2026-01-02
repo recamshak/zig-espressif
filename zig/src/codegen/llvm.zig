@@ -458,7 +458,7 @@ pub fn dataLayout(target: *const std.Target) []const u8 {
         .csky => "e-m:e-S32-p:32:32-i32:32:32-i64:32:32-f32:32:32-f64:32:32-v64:32:32-v128:32:32-a:0:32-Fi32-n32",
         .loongarch32 => "e-m:e-p:32:32-i64:64-n32-S128",
         .loongarch64 => "e-m:e-p:64:64-i64:64-i128:128-n32:64-S128",
-        .xtensa => "e-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-n32",
+        .xtensa => "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32",
 
         .kalimba,
         .or1k,
