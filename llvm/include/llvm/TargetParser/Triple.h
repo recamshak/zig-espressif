@@ -913,7 +913,8 @@ public:
             getEnvironment() == Triple::GNUEABIHFT64 ||
             getEnvironment() == Triple::OpenHOS ||
             getEnvironment() == Triple::MuslEABIHF || isAndroid()) &&
-           isOSBinFormatELF();
+           isOSBinFormatELF() &&
+           !isOSNetBSD();
   }
 
   /// Tests whether the target is T32.
