@@ -55,7 +55,8 @@ cmake "$ROOTDIR/llvm" \
   -DCLANG_TOOL_C_INDEX_TEST_BUILD=OFF \
   -DCLANG_TOOL_ARCMT_TEST_BUILD=OFF \
   -DCLANG_TOOL_C_ARCMT_TEST_BUILD=OFF \
-  -DCLANG_TOOL_LIBCLANG_BUILD=OFF
+  -DCLANG_TOOL_LIBCLANG_BUILD=OFF \
+  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=Xtensa
 cmake --build . --target install
 
 # Now we build Zig, still with system C/C++ compiler, linking against LLVM,
@@ -190,7 +191,8 @@ cmake "$ROOTDIR/llvm" \
   -DCLANG_TOOL_ARCMT_TEST_BUILD=OFF \
   -DCLANG_TOOL_C_ARCMT_TEST_BUILD=OFF \
   -DCLANG_TOOL_LIBCLANG_BUILD=OFF \
-  -DLLD_BUILD_TOOLS=OFF
+  -DLLD_BUILD_TOOLS=OFF \
+  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=Xtensa
 cmake --build . --target install
 
 # Finally, we can cross compile Zig itself, with Zig.
@@ -200,6 +202,7 @@ $ZIG build \
   --search-prefix "$ROOTDIR/out/$TARGET-$MCPU" \
   -Dflat \
   -Dstatic-llvm \
+  -Dllvm-has-xtensa \
   -Doptimize=ReleaseFast \
   -Dstrip \
   -Dtarget="$TARGET" \
