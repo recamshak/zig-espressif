@@ -21,6 +21,8 @@
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/IR/Function.h"
 
+#define STACK_SIZE_THRESHOLD 100
+
 using namespace llvm;
 
 // Minimum frame = reg save area (4 words) plus static chain (1 word)
@@ -362,6 +364,37 @@ void XtensaFrameLowering::determineCalleeSaves(MachineFunction &MF,
 
 void XtensaFrameLowering::processFunctionBeforeFrameFinalized(
     MachineFunction &MF, RegScavenger *RS) const {
+  // Presence of SPILL_* pseudo-instructions requires spill slots
+  int NeedRegs = 0;
+  for (const MachineBasicBlock &MBB : MF) {
+    for (const MachineInstr &MI : MBB) {
+      unsigned Opcode = MI.getOpcode();
+      if (Opcode == Xtensa::SPILL_BOOL)
+        NeedRegs += 1;
+
+      if (Opcode == Xtensa::RESTORE_BOOL)
+        NeedRegs += 3;
+    }
+  }
+  NeedRegs = std::min(16, NeedRegs);
+
+  // In WindowedABI mode add register scavenging slot
+  // FIXME: It may be posssible to add spill slot by more optimal way
+  if (STI.isWindowedABI() &&
+      ((MF.getFrameInfo().estimateStackSize(MF) > STACK_SIZE_THRESHOLD) ||
+      (NeedRegs > 0))) {
+    MachineFrameInfo &MFI = MF.getFrameInfo();
+    const TargetRegisterClass &RC = Xtensa::ARRegClass;
+    const TargetRegisterInfo &TRI = *MF.getSubtarget().getRegisterInfo();
+    unsigned Size = TRI.getSpillSize(RC);
+    Align Alignment = TRI.getSpillAlign(RC);
+    // If NeedsRegs == 0, we still need a spill slot
+    for (int i = 0; i <= NeedRegs; i++)
+      RS->addScavengingFrameIndex(
+          MFI.CreateStackObject(Size, Alignment, false));
+    return;
+  }
+
   // Set scavenging frame index if necessary.
   MachineFrameInfo &MFI = MF.getFrameInfo();
   uint64_t MaxSPOffset = MFI.estimateStackSize(MF);

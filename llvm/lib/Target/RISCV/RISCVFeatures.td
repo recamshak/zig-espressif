@@ -1421,6 +1421,35 @@ def HasVendorXwchc
       AssemblerPredicate<(all_of FeatureVendorXwchc),
                          "'Xwchc' (WCH/QingKe additional compressed opcodes)">;
 
+def FeatureVendorXespv1v
+    : RISCVExtension<2, 1,
+                     "'Espressif ESPV 2.1'">;
+def HasVendorXespv1v : Predicate<"Subtarget->hasVendorXespv1v()">, AssemblerPredicate<(all_of FeatureVendorXespv1v), "'Espressif ESPV 2.1'">;
+
+def FeatureVendorXesploop
+    : RISCVExtension<1, 0,
+                     "'Espressif ESPLOOP'">;
+def HasVendorXesploop : Predicate<"Subtarget->hasVendorXesploop()">, AssemblerPredicate<(all_of FeatureVendorXesploop), "'Espressif ESPLOOP'">;
+
+def FeatureVendorXespdsp
+    : RISCVExtension<2, 1,
+                     "'Espressif ESPDSP'">;
+def HasVendorXespdsp : Predicate<"Subtarget->hasVendorXespdsp()">, AssemblerPredicate<(all_of FeatureVendorXespdsp), "'Espressif ESPDSP'">;
+
+def FeatureVendorXespv
+    : RISCVExtension<2, 2,
+                     "'Espressif ESPV 2.2'">;
+def HasVendorXespv : Predicate<"Subtarget->hasVendorXespv()">, AssemblerPredicate<(all_of FeatureVendorXespv), "'Espressif ESPV 2.2'">;
+
+// Enable ESPV target lowering (DAG/instruction selection). Off by default; enable
+// for tests and IDF builds until well tested. When stable, enable by default for
+// ESPV-capable CPUs.
+def FeatureVendorXespvLowering : SubtargetFeature<"espv-lowering", "HasVendorXespvLowering", "true",
+  "Enable Espressif ESPV target lowering (DAG/instruction selection)">;
+
+def HasVendorEspSAT : Predicate<"Subtarget->hasVendorEspSAT()">, AssemblerPredicate<(any_of FeatureVendorXespdsp, FeatureVendorXespv1v)>;
+
+
 // Qualcomm Extensions
 
 def FeatureVendorXqccmp
@@ -1677,6 +1706,17 @@ foreach i = {1-31} in
 
 def FeatureSaveRestore : SubtargetFeature<"save-restore", "EnableSaveRestore",
                                           "true", "Enable save/restore.">;
+
+// Workaround: disable POP+RET fusion so codegen avoids cm.popret/cm.popretz.
+def FeatureCMPopRetWorkaround
+    : SubtargetFeature<"cm-popret", "EnableCMPopRetWorkaround", "false",
+                       "Enable workaround for cm.popret/cm.popretz">;
+
+// Workaround: use non-reversed callee-saved offset mapping for cm.push/cm.pop.
+def FeatureCMPushReverseWorkaround
+    : SubtargetFeature<"cm-push-reverse", "EnableCMPushReverseWorkaround",
+                       "false",
+                       "Enable workaround for cm.push/cm.pop register order">;
 
 def FeatureNoTrailingSeqCstFence : SubtargetFeature<"no-trailing-seq-cst-fence",
                                           "EnableTrailingSeqCstFence",

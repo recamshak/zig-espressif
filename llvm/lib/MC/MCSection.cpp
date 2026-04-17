@@ -84,11 +84,11 @@ LLVM_DUMP_METHOD void MCSection::dump(
 
 void MCEncodedFragment::setContents(ArrayRef<char> Contents) {
   auto &S = getParent()->ContentStorage;
-  if (Contents.size() > ContentSize) {
+  if (ContentStart + Contents.size() > ContentEnd) {
     ContentStart = S.size();
     S.resize_for_overwrite(S.size() + Contents.size());
   }
-  ContentSize = Contents.size();
+  ContentEnd = ContentStart + Contents.size();
   llvm::copy(Contents, S.begin() + ContentStart);
 }
 

@@ -89,7 +89,6 @@ struct Symbol {
   std::optional<size_t> WeakTargetSymbolId;
   size_t UniqueId;
   size_t RawIndex;
-  size_t OriginalRawIndex;
   bool Referenced;
 };
 
@@ -141,7 +140,6 @@ private:
   DenseMap<size_t, Symbol *> SymbolMap;
 
   size_t NextSymbolUniqueId = 0;
-  size_t NextSymbolOriginalIndex = 0;
 
   std::vector<Section> Sections;
   DenseMap<ssize_t, Section *> SectionMap;

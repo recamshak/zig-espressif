@@ -342,3 +342,173 @@ const char *RISCVInstPrinter::getRegisterName(MCRegister Reg) {
   return getRegisterName(Reg, ArchRegNames ? RISCV::NoRegAltName
                                            : RISCV::ABIRegAltName);
 }
+
+void RISCVInstPrinter::printImm8_AsmOperand(const MCInst *MI, int OpNum,
+                                            const MCSubtargetInfo &STI,
+                                            raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert(isInt<8>(Value) &&
+           "Invalid argument, value must be in ranges [-128,127]");
+    O << Value;
+  } else {
+    printOperand(MI, OpNum, STI, O);
+  }
+}
+
+void RISCVInstPrinter::printSelect_2_AsmOperand(const MCInst *MI, int OpNum,
+                                                const MCSubtargetInfo &STI,
+                                                raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert((Value >= 0 && Value <= 1) &&
+           "Invalid argument, value must be in range [0,1]");
+    O << Value;
+  } else
+    printOperand(MI, OpNum, STI, O);
+}
+
+void RISCVInstPrinter::printSelect_4_AsmOperand(const MCInst *MI, int OpNum,
+                                                const MCSubtargetInfo &STI,
+                                                raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert((Value >= 0 && Value <= 3) &&
+           "Invalid argument, value must be in range [0,3]");
+    O << Value;
+  } else
+    printOperand(MI, OpNum, STI, O);
+}
+
+void RISCVInstPrinter::printSelect_8_AsmOperand(const MCInst *MI, int OpNum,
+                                                const MCSubtargetInfo &STI,
+                                                raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert((Value >= 0 && Value <= 7) &&
+           "Invalid argument, value must be in range [0,7]");
+    O << Value;
+  } else
+    printOperand(MI, OpNum, STI, O);
+}
+
+void RISCVInstPrinter::printSelect_16_AsmOperand(const MCInst *MI, int OpNum,
+                                                 const MCSubtargetInfo &STI,
+                                                 raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert((Value >= 0 && Value <= 15) &&
+           "Invalid argument, value must be in range [0,15]");
+    O << Value;
+  } else
+    printOperand(MI, OpNum, STI, O);
+}
+
+void RISCVInstPrinter::printOffset_16_16_AsmOperand(const MCInst *MI, int OpNum,
+                                                    const MCSubtargetInfo &STI,
+                                                    raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert((Value >= -128 && Value <= 112 && (Value & 0xf) == 0) &&
+           "Invalid argument, value must be in range [-128,112], first 4 bits "
+           "should be zero");
+    O << Value;
+  } else {
+    printOperand(MI, OpNum, STI, O);
+  }
+}
+
+void RISCVInstPrinter::printOffset_256_8_AsmOperand(const MCInst *MI, int OpNum,
+                                                    const MCSubtargetInfo &STI,
+                                                    raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert((Value >= -1024 && Value <= 1016 && (Value & 0x7) == 0) &&
+           "Invalid argument, value must be in range [-1024,1016], first 3 "
+           "bits should be zero");
+    O << Value;
+  } else
+    printOperand(MI, OpNum, STI, O);
+}
+
+void RISCVInstPrinter::printOffset_256_16_AsmOperand(const MCInst *MI,
+                                                     int OpNum,
+                                                     const MCSubtargetInfo &STI,
+                                                     raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert((Value >= -2048 && Value <= 2032 && (Value & 0xf) == 0) &&
+           "Invalid argument, value must be in range [-2048,2032], first 4 "
+           "bits should be zero");
+    O << Value;
+  } else {
+    printOperand(MI, OpNum, STI, O);
+  }
+}
+
+void RISCVInstPrinter::printOffset_256_2_AsmOperand(const MCInst *MI, int OpNum,
+  const MCSubtargetInfo &STI,
+  raw_ostream &O) {
+if (MI->getOperand(OpNum).isImm()) {
+int64_t Value = MI->getOperand(OpNum).getImm();
+assert((Value >= -256 && Value <= 254 && (Value & 0x1) == 0) &&
+       "Invalid argument, value must be in range [-256,254], first 1 bits "
+       "should be zero");
+O << Value;
+} else
+printOperand(MI, OpNum, STI, O);
+}
+
+void RISCVInstPrinter::printOffset_256_4_AsmOperand(const MCInst *MI, int OpNum,
+                                                    const MCSubtargetInfo &STI,
+                                                    raw_ostream &O) {
+  if (MI->getOperand(OpNum).isImm()) {
+    int64_t Value = MI->getOperand(OpNum).getImm();
+    assert((Value >= -512 && Value <= 508 && (Value & 0x3) == 0) &&
+           "Invalid argument, value must be in range [-512,508], first 2 bits "
+           "should be zero");
+    O << Value;
+  } else
+    printOperand(MI, OpNum, STI, O);
+}
+
+void RISCVInstPrinter::printSATOperand(const MCInst *MI, int OpNum, const MCSubtargetInfo &STI,
+                     raw_ostream &O) {
+  uint32_t Value = MI->getOperand(OpNum).getImm();
+  assert(Value <= 1 && "Value must be either 0 or 1");
+  if (Value == 1)
+    O << "sat";
+  else
+    O << "trunc";
+}
+void RISCVInstPrinter::printRMOperand(const MCInst *MI, int OpNum, const MCSubtargetInfo &STI,
+  raw_ostream &O) {
+  uint32_t Value = MI->getOperand(OpNum).getImm();
+  assert((Value >= 0 && Value <= 7) && "Value must be [0,7]");
+  switch (Value) {
+    case 0:
+      O << "rdn";
+      break;
+    case 1:
+      O << "rup";
+      break;
+    case 2:
+      O << "raz";
+      break;
+    case 3:
+      O << "rtz";
+      break;
+    case 4:
+      O << "rhaz";
+      break;
+    case 5:
+      O << "rhtz";
+      break;
+    case 6:
+      O << "rne";
+      break;
+    case 7:
+      O << "dyn";
+      break;
+  }
+  }

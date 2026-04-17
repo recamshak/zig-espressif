@@ -40,7 +40,18 @@ add_llvm_target(RISCVCodeGen
   RISCVFoldMemOffset.cpp
   RISCVFrameLowering.cpp
   RISCVGatherScatterLowering.cpp
+  RISCVSplitLoopByLength.cpp
+  RISCVCustomLICM.cpp
+  RISCVLoopUnrollAndRemainder.cpp
+  RISCVESP32P4ConditionSplit.cpp
+  RISCVESP32P4FunctionSpecialization.cpp
+  RISCVESP32P4LoopPatternToIntrinsic.cpp
+  RISCVEsp32P4MemIntrin.cpp
+  RISCVESP32P4LoopVectorizeExtractor.cpp
   RISCVIndirectBranchTracking.cpp
+  RISCVIntLoopUnrollAndRemainder.cpp
+  RISCVDotprodSplitter.cpp
+  RISCVESP32P4LoopVersioning.cpp
   RISCVInsertReadWriteCSR.cpp
   RISCVInsertVSETVLI.cpp
   RISCVInsertWriteVXRM.cpp
@@ -48,6 +59,8 @@ add_llvm_target(RISCVCodeGen
   RISCVInterleavedAccess.cpp
   RISCVISelDAGToDAG.cpp
   RISCVISelLowering.cpp
+  RISCVESPISelLowering.cpp
+  RISCVESPVISelLowering.cpp
   RISCVLandingPadSetup.cpp
   RISCVLateBranchOpt.cpp
   RISCVLoadStoreOptimizer.cpp
@@ -89,6 +102,7 @@ add_llvm_target(RISCVCodeGen
   MC
   RISCVDesc
   RISCVInfo
+  Passes
   Scalar
   SelectionDAG
   Support

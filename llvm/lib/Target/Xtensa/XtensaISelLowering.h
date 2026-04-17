@@ -37,6 +37,12 @@ enum {
   // of the field [1..16]
   EXTUI,
 
+  // Branch at the end of the loop, uses result of the LOOPDEC
+  LOOPBR,
+  // Decrement loop counter
+  LOOPDEC,
+  LOOPEND,
+
   MOVSP,
 
   // Wraps a TargetGlobalAddress that should be loaded using PC-relative
@@ -78,6 +84,9 @@ enum {
   MSUB,
   // FP move
   MOVS,
+
+  BUILD_VEC,
+  TRUNC,
 };
 }
 
@@ -102,6 +111,18 @@ public:
     return VT.changeVectorElementTypeToInteger();
   }
 
+  bool isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
+                                  EVT VT) const override;
+
+  /// If a physical register, this returns the register that receives the
+  /// exception address on entry to an EH pad.
+  Register
+  getExceptionPointerRegister(const Constant *PersonalityFn) const override;
+  /// If a physical register, this returns the register that receives the
+  /// exception typeid on entry to a landing pad.
+  Register
+  getExceptionSelectorRegister(const Constant *PersonalityFn) const override;
+
   bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const override;
 
   const char *getTargetNodeName(unsigned Opcode) const override;
@@ -124,6 +145,17 @@ public:
                                     std::vector<SDValue> &Ops,
                                     SelectionDAG &DAG) const override;
 
+  InlineAsm::ConstraintCode
+  getInlineAsmMemConstraint(StringRef ConstraintCode) const override {
+    if (ConstraintCode == "R")
+      return InlineAsm::ConstraintCode::R;
+    else if (ConstraintCode == "ZC")
+      return InlineAsm::ConstraintCode::ZC;
+    return TargetLowering::getInlineAsmMemConstraint(ConstraintCode);
+  }
+
+  SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
+
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
 
   SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
@@ -145,6 +177,12 @@ public:
                       const SmallVectorImpl<SDValue> &OutVals, const SDLoc &DL,
                       SelectionDAG &DAG) const override;
 
+  bool shouldInsertFencesForAtomic(const Instruction *I) const override {
+    return true;
+  }
+
+  AtomicExpansionKind shouldExpandAtomicRMWInIR(AtomicRMWInst *) const override;
+
   bool decomposeMulByConstant(LLVMContext &Context, EVT VT,
                               SDValue C) const override;
 
@@ -153,6 +191,10 @@ public:
   MachineBasicBlock *
   EmitInstrWithCustomInserter(MachineInstr &MI,
                               MachineBasicBlock *BB) const override;
+
+  MachineBasicBlock *EmitDSPInstrWithCustomInserter(
+      MachineInstr &MI, MachineBasicBlock *MBB, const TargetInstrInfo &TII,
+      MachineFunction *MF, MachineRegisterInfo &MRI, DebugLoc DL) const;
 
 private:
   const XtensaSubtarget &Subtarget;
@@ -194,6 +236,14 @@ private:
   SDValue LowerShiftLeftParts(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue LowerShiftRightParts(SDValue Op, SelectionDAG &DAG, bool IsSRA) const;
+
+  SDValue LowerFunnelShift(SDValue Op, SelectionDAG &DAG) const;
+
+  SDValue LowerVectorShift(SDValue Op, SelectionDAG &DAG) const;
+
+  SDValue LowerBITCAST(SDValue Op, SelectionDAG &DAG) const;
+
+  SDValue LowerBitVecLOAD(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue getAddrPCRel(SDValue Op, SelectionDAG &DAG) const;
 

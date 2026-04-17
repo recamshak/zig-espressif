@@ -1897,3 +1897,9 @@ include "llvm/IR/IntrinsicsRISCVXTHead.td"
 include "llvm/IR/IntrinsicsRISCVXsf.td"
 include "llvm/IR/IntrinsicsRISCVXCV.td"
 include "llvm/IR/IntrinsicsRISCVXAndes.td"
+
+// Generated code
+// --------------
+include "llvm/IR/IntrinsicsRISCVESPV.td"
+include "llvm/IR/IntrinsicsRISCVESPVM.td"
+include "llvm/IR/IntrinsicsRISCVESPDSP.td"

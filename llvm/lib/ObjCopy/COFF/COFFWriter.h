@@ -34,7 +34,6 @@ class COFFWriter {
   template <class SymbolTy> std::pair<size_t, size_t> finalizeSymbolTable();
   Error finalizeRelocTargets();
   Error finalizeSymbolContents();
-  Error finalizeSymIdxContents();
   void layoutSections();
   Expected<size_t> finalizeStringTable();
 

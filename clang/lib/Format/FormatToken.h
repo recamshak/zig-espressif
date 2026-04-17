@@ -55,7 +55,7 @@ namespace format {
   TYPE(ConflictAlternative)                                                    \
   TYPE(ConflictEnd)                                                            \
   TYPE(ConflictStart)                                                          \
-  /* l_brace of if/for/while/switch/catch */                                   \
+  /* l_brace of if/for/while */                                                \
   TYPE(ControlStatementLBrace)                                                 \
   TYPE(ControlStatementRBrace)                                                 \
   TYPE(CppCastLParen)                                                          \

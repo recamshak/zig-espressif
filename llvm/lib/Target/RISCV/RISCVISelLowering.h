@@ -29,6 +29,9 @@ struct RISCVRegisterInfo;
 class RISCVTargetLowering : public TargetLowering {
   const RISCVSubtarget &Subtarget;
 
+private:
+  void initializeESPVTargetLowering(const RISCVSubtarget &Subtarget);
+
 public:
   explicit RISCVTargetLowering(const TargetMachine &TM,
                                const RISCVSubtarget &STI);
@@ -457,6 +460,10 @@ public:
   MachineInstr *EmitKCFICheck(MachineBasicBlock &MBB,
                               MachineBasicBlock::instr_iterator &MBBI,
                               const TargetInstrInfo *TII) const override;
+
+  MachineBasicBlock *emitDSPInstrWithCustomInserter(
+      MachineInstr &MI, MachineBasicBlock *MBB, const TargetInstrInfo &TII,
+      MachineFunction *MF, MachineRegisterInfo &MRI, DebugLoc DL) const;
 
   /// True if stack clash protection is enabled for this functions.
   bool hasInlineStackProbe(const MachineFunction &MF) const override;

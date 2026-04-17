@@ -29,11 +29,18 @@ class ArithLogic_RRR<bits<4> oper2, bits<4> oper1, string instrAsm,
   let isReMaterializable = 0;
 }
 
+class Arith_Pat<ValueType res_vt, RegisterClass op_vt, 
+                SDPatternOperator opNode, Instruction inst>
+  : Pat<(res_vt (opNode op_vt:$r, op_vt:$t)),
+          (inst op_vt:$r, op_vt:$t)>; 
+
 def ADD : ArithLogic_RRR<0x08, 0x00, "add", add, 1>;
 def SUB : ArithLogic_RRR<0x0C, 0x00, "sub", sub>;
 def AND : ArithLogic_RRR<0x01, 0x00, "and", and, 1>;
 def OR  : ArithLogic_RRR<0x02, 0x00, "or", or, 1>;
 def XOR : ArithLogic_RRR<0x03, 0x00, "xor", xor, 1>;
+
+def : InstAlias<"_add\t$r, $s, $t", (ADD AR:$r, AR:$s, AR:$t)>;
 
 class ADDX<bits<4> oper, string instrAsm, list<dag> pattern>
   : RRR_Inst<0x00, 0x00, oper, (outs AR:$r), (ins AR:$s, AR:$t),
@@ -52,7 +59,7 @@ def SUBX4 : SUBX<0x0E, "subx4", [(set AR:$r, (sub (shl AR:$s, (i32 2)), AR:$t))]
 def SUBX8 : SUBX<0x0F, "subx8", [(set AR:$r, (sub (shl AR:$s, (i32 3)), AR:$t))]>;
 
 def ABS : RRR_Inst<0x00, 0x00, 0x06, (outs AR:$r), (ins AR:$t),
-                  "abs\t$r, $t", []> {
+                  "abs\t$r, $t", [(set AR:$r, (abs AR:$t))]> {
   let s = 0x1;
 }
 
@@ -61,6 +68,8 @@ def ADDI : RRI8_Inst<0x02, (outs AR:$t), (ins AR:$s, imm8:$imm8),
                     [(set AR:$t, (add AR:$s, imm8:$imm8))]> {
   let r = 0x0C;
 }
+
+def : InstAlias<"_addi\t$r, $s, $imm8", (ADDI AR:$r, AR:$s, imm8:$imm8)>;
 
 def ADDMI : RRI8_Inst<0x02, (outs AR:$t), (ins AR:$s, imm8_sh8:$imm_sh8),
                      "addmi\t$t, $s, $imm_sh8",
@@ -83,6 +92,17 @@ def NEG : RRR_Inst<0x00, 0x00, 0x06, (outs AR:$r), (ins AR:$t),
 def MOVI : RRI8_Inst<0x02, (outs AR:$t), (ins imm12m:$imm),
                     "movi\t$t, $imm",
                     [(set AR:$t, imm12m:$imm)]> {
+  bits<12> imm;
+
+  let imm8{7-0} = imm{7-0};
+  let s{3-0} = imm{11-8};
+  let r = 0xa;
+}
+
+def _MOVI : RRI8_Inst<0x02, (outs AR:$t), (ins imm12:$imm),
+                    "_movi\t$t, $imm",
+                    [(set AR:$t, imm12m:$imm)]> {
+  let DecoderNamespace = "Fallback";
   bits<12> imm;
 
   let imm8{7-0} = imm{7-0};
@@ -157,7 +177,7 @@ def SRAI : RRR_Inst<0x00, 0x01, 0x02, (outs AR:$r), (ins AR:$t, uimm5:$sa),
   let s = sa{3-0};
 }
 
-def SRLI : RRR_Inst<0x00, 0x01, 0x04, (outs AR:$r), (ins AR:$t, uimm4:$sa),
+def SRLI : RRR_Inst<0x00, 0x01, 0x04, (outs AR:$r), (ins AR:$t, uimm5:$sa),
                    "srli\t$r, $t, $sa",
                    [(set AR:$r, (srl AR:$t, uimm4:$sa))]> {
   bits<4> sa;
@@ -165,9 +185,27 @@ def SRLI : RRR_Inst<0x00, 0x01, 0x04, (outs AR:$r), (ins AR:$t, uimm4:$sa),
   let s = sa;
 }
 
-def SLLI : RRR_Inst<0x00, 0x01, 0x00, (outs AR:$r), (ins AR:$s, shimm1_31:$sa),
-                   "slli\t$r, $s, $sa",
+def _SRLI : RRR_Inst<0x00, 0x01, 0x04, (outs AR:$r), (ins AR:$t, uimm4:$sa),
+                   "_srli\t$r, $t, $sa",
+                   [(set AR:$r, (srl AR:$t, uimm4:$sa))]> {
+  let DecoderNamespace = "Fallback";
+  bits<4> sa;
+
+  let s = sa;
+}
+
+def SLLI : RRR_Inst<0x00, 0x01, 0x00, (outs AR:$r), (ins AR:$s, shimm0_31:$sa),
+                   "slli\t$r, $s, $sa", []> {
+  bits<5> sa;
+
+  let Inst{20} = sa{4};
+  let t = sa{3-0};
+}
+
+def _SLLI : RRR_Inst<0x00, 0x01, 0x00, (outs AR:$r), (ins AR:$s, shimm1_31:$sa),
+                   "_slli\t$r, $s, $sa",
                    [(set AR:$r, (shl AR:$s, shimm1_31:$sa))]> {
+  let DecoderNamespace = "Fallback";
   bits<5> sa;
 
   let Inst{20} = sa{4};
@@ -214,6 +252,9 @@ def L8UI  : Load_RRI8<0x00, "l8ui", zextloadi8, addr_ish1, mem8>;
 def L16SI : Load_RRI8<0x09, "l16si", sextloadi16, addr_ish2, mem16>;
 def L16UI : Load_RRI8<0x01, "l16ui", zextloadi16, addr_ish2, mem16>;
 def L32I  : Load_RRI8<0x02, "l32i", load, addr_ish4, mem32>;
+def _L32I : Load_RRI8<0x02, "_l32i", load, addr_ish4, mem32> {
+  let DecoderNamespace = "Fallback";
+}
 
 // Store instructions
 let mayStore = 1, usesCustomInserter = 1 in {
@@ -233,6 +274,9 @@ let mayStore = 1, usesCustomInserter = 1 in {
 def S8I  : Store_II8<0x04, "s8i", truncstorei8, addr_ish1, mem8>;
 def S16I : Store_II8<0x05, "s16i", truncstorei16, addr_ish2, mem16>;
 def S32I : Store_II8<0x06, "s32i", store, addr_ish4, mem32>;
+def _S32I : Store_II8<0x06, "_s32i", store, addr_ish4, mem32> {
+  let DecoderNamespace = "Fallback";
+}
 
 let AddedComplexity = 10 in
 def L32R : RI16_Inst<0x01, (outs AR:$t), (ins L32Rtarget:$label),
@@ -265,6 +309,10 @@ let isCodeGenOnly = 1, mayLoad = 1 in {
 def : Pat<(i32 (extloadi1  addr_ish1:$addr)), (L8UI addr_ish1:$addr)>;
 def : Pat<(i32 (extloadi8  addr_ish1:$addr)), (L8UI addr_ish1:$addr)>;
 def : Pat<(i32 (extloadi16 addr_ish2:$addr)), (L16UI addr_ish2:$addr)>;
+
+// Load from aggregate constant placed as Global Variable
+def : Pat<(i32 (load (add i32:$s, (Xtensa_pcrel_wrapper tconstpool:$in)))),
+          (L32I (ADD i32:$s, (L32R tconstpool:$in)), 0)>;
 
 //===----------------------------------------------------------------------===//
 // Conditional branch instructions
@@ -325,6 +373,14 @@ def BLT   : Branch_RR<0x02, "blt", SETLT>;
 def BGEU  : Branch_RR<0x0B, "bgeu", SETUGE>;
 def BLTU  : Branch_RR<0x03, "bltu", SETULT>;
 
+// RR aliases
+def : InstAlias<"_beq\t$s, $t, $target", (BEQ AR:$s, AR:$t, brtarget:$target)>;
+def : InstAlias<"_bne\t$s, $t, $target", (BNE AR:$s, AR:$t, brtarget:$target)>;
+def : InstAlias<"_bge\t$s, $t, $target", (BGE AR:$s, AR:$t, brtarget:$target)>;
+def : InstAlias<"_blt\t$s, $t, $target", (BLT AR:$s, AR:$t, brtarget:$target)>;
+def : InstAlias<"_bgeu\t$s, $t, $target", (BGEU AR:$s, AR:$t, brtarget:$target)>;
+def : InstAlias<"_bltu\t$s, $t, $target", (BLTU AR:$s, AR:$t, brtarget:$target)>;
+
 def BEQI  : Branch_RI<0x02, "beqi", SETEQ>;
 def BNEI  : Branch_RI<0x06, "bnei", SETNE>;
 def BGEI  : Branch_RI<0x0E, "bgei", SETGE>;
@@ -332,10 +388,24 @@ def BLTI  : Branch_RI<0x0A, "blti", SETLT>;
 def BGEUI : Branch_RIU<0x0F, "bgeui", SETUGE>;
 def BLTUI : Branch_RIU<0x0B, "bltui", SETULT>;
 
+// RI aliases
+def : InstAlias<"_beqi\t$s, $imm, $target", (BEQI AR:$s, b4const:$imm, brtarget:$target)>;
+def : InstAlias<"_bnei\t$s, $imm, $target", (BNEI AR:$s, b4const:$imm, brtarget:$target)>;
+def : InstAlias<"_bgei\t$s, $imm, $target", (BGEI AR:$s, b4const:$imm, brtarget:$target)>;
+def : InstAlias<"_blti\t$s, $imm, $target", (BLTI AR:$s, b4const:$imm, brtarget:$target)>;
+def : InstAlias<"_bgeui\t$s, $imm, $target", (BGEUI AR:$s, b4constu:$imm, brtarget:$target)>;
+def : InstAlias<"_bltui\t$s, $imm, $target", (BLTUI AR:$s, b4constu:$imm, brtarget:$target)>;
+
 def BEQZ  : Branch_RZ<0x01, 0x00, "beqz", SETEQ>;
 def BNEZ  : Branch_RZ<0x01, 0x01, "bnez", SETNE>;
 def BGEZ  : Branch_RZ<0x01, 0x03, "bgez", SETGE>;
 def BLTZ  : Branch_RZ<0x01, 0x02, "bltz", SETLT>;
+
+// RZ aliases
+def : InstAlias<"_beqz\t$s, $target", (BEQZ AR:$s, brtarget:$target)>;
+def : InstAlias<"_bnez\t$s, $target", (BNEZ AR:$s, brtarget:$target)>;
+def : InstAlias<"_bgez\t$s, $target", (BGEZ AR:$s, brtarget:$target)>;
+def : InstAlias<"_bltz\t$s, $target", (BLTZ AR:$s, brtarget:$target)>;
 
 def BALL : RRI8_Inst<0x07, (outs),
                     (ins AR:$s, AR:$t, brtarget:$target),
@@ -346,6 +416,8 @@ def BALL : RRI8_Inst<0x07, (outs),
   let imm8 = target;
 }
 
+def : InstAlias<"_ball\t$s, $t, $target", (BALL AR:$s, AR:$t, brtarget:$target)>;
+
 def BANY : RRI8_Inst<0x07, (outs),
                     (ins AR:$s, AR:$t, brtarget:$target),
                     "bany\t$s, $t, $target", []> {
@@ -354,6 +426,8 @@ def BANY : RRI8_Inst<0x07, (outs),
   let r = 0x08;
   let imm8 = target;
 }
+
+def : InstAlias<"_bany\t$s, $t, $target", (BANY AR:$s, AR:$t, brtarget:$target)>;
 
 def BBC : RRI8_Inst<0x07, (outs),
                    (ins AR:$s, AR:$t, brtarget:$target),
@@ -364,6 +438,8 @@ def BBC : RRI8_Inst<0x07, (outs),
   let imm8 = target;
 }
 
+def : InstAlias<"_bbc\t$s, $t, $target", (BBC AR:$s, AR:$t, brtarget:$target)>;
+
 def BBS : RRI8_Inst<0x07, (outs),
                    (ins AR:$s, AR:$t, brtarget:$target),
                    "bbs\t$s, $t, $target", []> {
@@ -372,6 +448,8 @@ def BBS : RRI8_Inst<0x07, (outs),
   let r = 0x0d;
   let imm8 = target;
 }
+
+def : InstAlias<"_bbs\t$s, $t, $target", (BBS AR:$s, AR:$t, brtarget:$target)>;
 
 def BNALL : RRI8_Inst<0x07, (outs),
                     (ins AR:$s, AR:$t, brtarget:$target),
@@ -382,6 +460,8 @@ def BNALL : RRI8_Inst<0x07, (outs),
   let imm8 = target;
 }
 
+def : InstAlias<"_bnall\t$s, $t, $target", (BNALL AR:$s, AR:$t, brtarget:$target)>;
+
 def BNONE : RRI8_Inst<0x07, (outs),
                      (ins AR:$s, AR:$t, brtarget:$target),
                      "bnone\t$s, $t, $target", []> {
@@ -390,6 +470,8 @@ def BNONE : RRI8_Inst<0x07, (outs),
   let r = 0x00;
   let imm8 = target;
 }
+
+def : InstAlias<"_bnone\t$s, $t, $target", (BNONE AR:$s, AR:$t, brtarget:$target)>;
 
 def BBCI : RRI8_Inst<0x07, (outs),
                     (ins AR:$s, uimm5:$imm, brtarget:$target),
@@ -403,6 +485,12 @@ def BBCI : RRI8_Inst<0x07, (outs),
   let imm8 = target;
 }
 
+def : InstAlias<"_bbci\t$s, $imm, $target", (BBCI AR:$s, uimm5:$imm, brtarget:$target)>;
+
+def : InstAlias<"bbci.l\t$s, $imm, $target", (BBCI AR:$s, uimm5:$imm, brtarget:$target)>;
+
+def : InstAlias<"_bbci.l\t$s, $imm, $target", (BBCI AR:$s, uimm5:$imm, brtarget:$target)>;
+
 def BBSI : RRI8_Inst<0x07, (outs),
                     (ins AR:$s, uimm5:$imm, brtarget:$target),
                     "bbsi\t$s, $imm, $target", []> {
@@ -414,6 +502,42 @@ def BBSI : RRI8_Inst<0x07, (outs),
   let t{3-0} = imm{3-0};
   let imm8 = target;
 }
+
+def : InstAlias<"_bbsi\t$s, $imm, $target", (BBSI AR:$s, uimm5:$imm, brtarget:$target)>;
+
+def : InstAlias<"bbsi.l\t$s, $imm, $target", (BBSI AR:$s, uimm5:$imm, brtarget:$target)>;
+
+def : InstAlias<"_bbsi.l\t$s, $imm, $target", (BBSI AR:$s, uimm5:$imm, brtarget:$target)>;
+
+def : Pat<(brcc SETGT, AR:$s, AR:$t, bb:$target),
+          (BLT AR:$t, AR:$s, bb:$target)>;
+def : Pat<(brcc SETUGT, AR:$s, AR:$t, bb:$target),
+          (BLTU AR:$t, AR:$s, bb:$target)>;
+def : Pat<(brcc SETLE, AR:$s, AR:$t, bb:$target),
+          (BGE AR:$t, AR:$s, bb:$target)>;
+def : Pat<(brcc SETULE, AR:$s, AR:$t, bb:$target),
+          (BGEU AR:$t, AR:$s, bb:$target)>;
+
+def : Pat<(brcond (i32 (seteq AR:$s, AR:$t)), bb:$target),
+          (BEQ AR:$s, AR:$t, bb:$target)>;
+def : Pat<(brcond (i32 (setne AR:$s, AR:$t)), bb:$target),
+          (BNE AR:$s, AR:$t, bb:$target)>;
+def : Pat<(brcond (i32 (setge AR:$s, AR:$t)), bb:$target),
+          (BGE AR:$s, AR:$t, bb:$target)>;
+def : Pat<(brcond (i32 (setle AR:$s, AR:$t)), bb:$target),
+          (BLT AR:$s, AR:$t, bb:$target)>;
+def : Pat<(brcond (i32 (setuge AR:$s, AR:$t)), bb:$target),
+          (BGEU AR:$s, AR:$t, bb:$target)>;
+def : Pat<(brcond (i32 (setult AR:$s, AR:$t)), bb:$target),
+          (BLTU AR:$s, AR:$t, bb:$target)>;
+def : Pat<(brcond (i32 (setgt AR:$s, AR:$t)), bb:$target),
+          (BLT AR:$t, AR:$s, bb:$target)>;
+def : Pat<(brcond (i32 (setugt AR:$s, AR:$t)), bb:$target),
+          (BLTU AR:$t, AR:$s, bb:$target)>;
+def : Pat<(brcond (i32 (setle AR:$s, AR:$t)), bb:$target),
+          (BGE AR:$t, AR:$s, bb:$target)>;
+def : Pat<(brcond (i32 (setule AR:$s, AR:$t)), bb:$target),
+          (BGEU AR:$t, AR:$s, bb:$target)>;
 
 def : Pat<(brcond AR:$s, bb:$target), (BNEZ AR:$s, bb:$target)>;
 //===----------------------------------------------------------------------===//
@@ -463,6 +587,8 @@ let isReturn = 1, isTerminator = 1,
   }
 }
 
+def : InstAlias<"_ret", (RET)>;
+
 // Call patterns
 def : Pat<(Xtensa_call (i32 tglobaladdr:$dst)),
           (CALL0 tglobaladdr:$dst)>;
@@ -496,6 +622,8 @@ def EXTW : RRR_Inst<0x00, 0x00, 0x00, (outs), (ins),
   let hasSideEffects = 1;
 }
 
+def : Pat<(atomic_fence timm, timm), (MEMW)>;
+
 //===----------------------------------------------------------------------===//
 // Illegal instructions
 //===----------------------------------------------------------------------===//
@@ -506,6 +634,7 @@ def ILL : CALLX_Inst<0x00, 0x00, 0x00, (outs), (ins),
   let n = 0x0;
   let r = 0;
   let s = 0;
+  let isTrap = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -551,6 +680,8 @@ def NOP : RRR_Inst<0x00, 0x00, 0x00, (outs), (ins),
   let t = 0x0f;
 }
 
+def : InstAlias<"_nop", (NOP)>;
+
 def WSR : RSR_Inst<0x00, 0x03, 0x01, (outs SR:$sr), (ins AR:$t),
                   "wsr\t$t, $sr", []>;
 
@@ -560,6 +691,17 @@ def RSR : RSR_Inst<0x00, 0x03, 0x00, (outs AR:$t), (ins SR:$sr),
 def XSR : RSR_Inst<0x00, 0x01, 0x06, (outs AR:$ard, SR:$srd), (ins AR:$t, SR:$sr),
                   "xsr\t$t, $sr", []> {
   let Constraints = "$ard = $t, $srd = $sr";
+}
+
+//===----------------------------------------------------------------------===//
+// Simulator instructions
+//===----------------------------------------------------------------------===//
+
+def SIMCALL : RRR_Inst<0x00, 0x00, 0x00, (outs), (ins),
+                      "simcall", []> {
+  let r = 0x5;
+  let s = 0x1;
+  let t = 0x0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -580,6 +722,20 @@ def RUR : RRR_Inst<0x00, 0x03, 0x0E, (outs AR:$r), (ins UR:$ur),
 
   let s = ur{7-4};
   let t = ur{3-0};
+}
+
+def WUR_FCR :RRR_Inst<0x00, 0x03, 0x0F, (outs), (ins AR:$t),
+                  "wur.fcr \t$t", []> {
+  let r = 232{7-4};
+  let s = 232{3-0};
+  let Defs = [FCR];
+}
+
+def WUR_FSR :RRR_Inst<0x00, 0x03, 0x0F, (outs), (ins AR:$t),
+                  "wur.fsr\t $t", []> {
+  let r = 233{7-4};
+  let s = 233{3-0};
+  let Defs = [FSR];
 }
 
 //===----------------------------------------------------------------------===//
@@ -622,6 +778,8 @@ class ArithLogic_RRRN<bits<4> oper0, string instrAsm,
 
 def ADD_N : ArithLogic_RRRN<0x0a, "add.n", add, 1>;
 
+def : InstAlias<"_add.n\t$r, $s, $t", (ADD_N AR:$r, AR:$s, AR:$t)>;
+
 def ADDI_N : RRRN_Inst<0x0B, (outs AR:$r), (ins AR:$s, imm1n_15:$imm),
                       "addi.n\t$r, $s, $imm",
                       [(set AR:$r, (add AR:$s, imm1n_15:$imm))]>, Requires<[HasDensity]> {
@@ -629,6 +787,8 @@ def ADDI_N : RRRN_Inst<0x0B, (outs AR:$r), (ins AR:$s, imm1n_15:$imm),
 
   let t = imm;
 }
+
+def : InstAlias<"_addi.n\t$r, $s, $imm", (ADDI_N AR:$r, AR:$s, imm1n_15:$imm)>;
 
 // Conditional branch instructions.
 let isBranch = 1, isTerminator = 1 in {
@@ -647,11 +807,15 @@ let isBranch = 1, isTerminator = 1 in {
   }
 }
 
+def : InstAlias<"_beqz.n\t$s, $target", (BEQZ_N AR:$s, brtarget:$target)>, Requires<[HasDensity]>;
+def : InstAlias<"_bnez.n\t$s, $target", (BNEZ_N AR:$s, brtarget:$target)>, Requires<[HasDensity]>;
+
 def ILL_N : RRRN_Inst<0x0D, (outs), (ins),
                      "ill.n", []>, Requires<[HasDensity]> {
   let r = 0xF;
   let s = 0x0;
   let t = 0x6;
+  let isTrap = 1;
 }
 
 def MOV_N : RRRN_Inst<0x0D, (outs AR:$t), (ins AR:$s),
@@ -659,6 +823,7 @@ def MOV_N : RRRN_Inst<0x0D, (outs AR:$t), (ins AR:$s),
   let r = 0;
 }
 
+def : InstAlias<"_mov.n\t $t, $s", (MOV_N AR:$t, AR:$s)>;
 def : InstAlias<"mov\t $t, $s", (OR AR:$t, AR:$s, AR:$s)>;
 
 def MOVI_N : RI7_Inst<0xc, 0x0, (outs AR:$s), (ins imm32n_95:$imm7),
@@ -685,11 +850,33 @@ let mayLoad = 1, usesCustomInserter = 1 in {
   }
 }
 
+let mayLoad = 1, usesCustomInserter = 1 in {
+  def _L32I_N : RRRN_Inst<0x8, (outs AR:$t), (ins mem32n:$addr),
+                        "_l32i.n\t$t, $addr", []>, Requires<[HasDensity]> {
+    bits<8> addr;
+    let DecoderNamespace = "Fallback";
+
+    let r{3-0} = addr{7-4};
+    let s{3-0} = addr{3-0};
+  }
+}
+
 // Store instruction
 let mayStore = 1, usesCustomInserter = 1 in {
   def S32I_N : RRRN_Inst<0x9, (outs), (ins  AR:$t, mem32n:$addr),
                         "s32i.n\t$t, $addr", []>, Requires<[HasDensity]> {
     bits<8> addr;
+
+    let r{3-0} = addr{7-4};
+    let s{3-0} = addr{3-0};
+  }
+}
+
+let mayStore = 1, usesCustomInserter = 1 in {
+  def _S32I_N : RRRN_Inst<0x9, (outs), (ins  AR:$t, mem32n:$addr),
+                        "_s32i.n\t$t, $addr", []>, Requires<[HasDensity]> {
+    bits<8> addr;
+    let DecoderNamespace = "Fallback";
 
     let r{3-0} = addr{7-4};
     let s{3-0} = addr{3-0};
@@ -707,6 +894,8 @@ let isReturn = 1, isTerminator = 1,
     let t = 0;
   }
 }
+
+def : InstAlias<"_ret.n", (RET_N)>;
 
 //===----------------------------------------------------------------------===//
 // Windowed instructions
@@ -830,6 +1019,10 @@ def ROTW : RRR_Inst<0x00, 0x00, 0x04, (outs), (ins imm8n_7:$imm),
 //===----------------------------------------------------------------------===//
 // Boolean Instructions
 //===----------------------------------------------------------------------===//
+class BIN_PAT<SDPatternOperator node, Instruction inst,
+  ValueType src_vt, ValueType dst_vt = src_vt>
+  : Pat<(dst_vt (node src_vt:$f1, src_vt:$f2)),
+        (inst src_vt:$f1, src_vt:$f2)>;
 
 def ALL4 : RRR_Inst<0x00, 0x00, 0x00, (outs BR:$t), (ins BR:$s),
                    "all4\t$t, $s", []>, Requires<[HasBoolean]> {
@@ -895,6 +1088,88 @@ let Constraints = "$dr = $r,@earlyclobber $dr" in {
 
   def MOVT : RRR_Inst<0x00, 0x03, 0x0D, (outs AR:$dr), (ins AR:$r, AR:$s, BR:$t),
                    "movt\t$r, $s, $t", []>, Requires<[HasBoolean]>;
+}
+
+let Predicates = [HasBoolean] in {
+  def OR_BR_PAT: BIN_PAT<or,ORB,v1i1>;
+  def XOR_BR_PAT: BIN_PAT<xor,XORB,v1i1>;
+  def AND_BR_PAT: BIN_PAT<and,ANDB,v1i1>;
+
+  // vselect C T F = C * T + ~C * F
+  def : Pat<(v1i1 (vselect v1i1:$c, v1i1:$t, v1i1:$f)),
+          (ORB (ANDB $t, $f), (ANDBC $f, $c))>;
+
+  def MOVBA_P2: Pseudo<(outs BR:$r, AR:$x, AR:$y), (ins AR:$s),
+                        "!movba $r, $x, $y, $s", []> {
+    let Defs = [BREG];
+  }
+
+  def MOVBA_P: Pseudo<(outs BR:$r), (ins AR:$s),
+                        "!movba $r, $s", []> {
+    let usesCustomInserter = 1;
+    let Defs = [BREG];
+  }
+
+  def MOVBA2_P2: Pseudo<(outs BR2:$r, AR:$x, AR:$y), (ins AR:$s),
+                        "!movba $r, $x, $y, $s", []> {
+    let Defs = [BREG];
+  }
+
+  def MOVBA2_P: Pseudo<(outs BR2:$r), (ins AR:$s),
+                        "!movba2 $r, $s", []> {
+    let usesCustomInserter = 1;
+    let Defs = [BREG];
+  }
+
+  def MOVBA4_P2: Pseudo<(outs BR4:$r, AR:$x, AR:$y), (ins AR:$s),
+                        "!movba4 $r, $x, $y, $s", []> {
+    let Defs = [BREG];
+  }
+
+  def MOVBA4_P: Pseudo<(outs BR4:$r), (ins AR:$s),
+                        "!movba4 $r, $s", []> {
+    let usesCustomInserter = 1;
+    let Defs = [BREG];
+  }
+
+  def EXTUI_BR_P: Pseudo<(outs AR:$r), (ins AR:$s, BR:$b),
+                        "!extui_br $r, $s, $b", []>;
+  def EXTUI_BR2_P: Pseudo<(outs AR:$r), (ins AR:$s, BR2:$b),
+                        "!extui_br2 $r, $s, $b", []>;
+  def EXTUI_BR4_P: Pseudo<(outs AR:$r), (ins AR:$s, BR4:$b),
+                        "!extui_br4 $r, $s, $b", []>;
+  def SLLI_BR_P: Pseudo<(outs AR:$r), (ins AR:$s, BR:$b),
+                        "!slli_br $r, $s, $b", []>;
+
+  def : Pat<(v1i1 (build_vector AR:$a)), (MOVBA_P AR:$a)>;
+  def : Pat<(v1i1 (scalar_to_vector AR:$a)), (MOVBA_P AR:$a)>;
+
+  def : Pat<(v2i1 (build_vector AR:$a, AR:$b)),
+             (MOVBA2_P (OR AR:$a, (SLLI AR:$b, (i32 1))))>;
+
+  def : Pat<(v2i1 (Xtensa_trunc AR:$s)), (MOVBA2_P AR:$s)>;
+  def : Pat<(v4i1 (Xtensa_trunc AR:$s)), (MOVBA4_P AR:$s)>;
+
+  def : Pat<(i32 (vector_extract (v1i1 BR:$b), (i32 0))),
+            (EXTUI_BR_P (RSR BREG), BR:$b)>;
+  def : Pat<(v1i1 (load addr_ish1:$addr)), (MOVBA_P (L8UI mem8:$addr))>;
+  def : Pat<(v2i1 (load addr_ish1:$addr)), (MOVBA2_P (L8UI mem8:$addr))>;
+  def : Pat<(v4i1 (load addr_ish1:$addr)), (MOVBA4_P (L8UI mem8:$addr))>;
+
+  def : Pat<(store BR:$b, addr_ish1:$addr), (S8I (EXTUI_BR_P (RSR BREG), BR:$b), mem32:$addr)>;
+  def : Pat<(store BR2:$b, addr_ish1:$addr), (S8I (EXTUI_BR2_P (RSR BREG), BR2:$b), mem32:$addr)>;
+  def : Pat<(store BR4:$b, addr_ish1:$addr), (S8I (EXTUI_BR4_P (RSR BREG), BR4:$b), mem32:$addr)>;
+
+  def SPILL_BOOL: Pseudo<(outs), (ins BR:$b, mem8:$mem),
+                            "!spill_bool $b, $mem",[]> {
+    let mayStore = 1;
+  }
+
+  def RESTORE_BOOL: Pseudo<(outs BR:$out), (ins mem8:$mem),
+                            "!restore_bool $out, $mem",[]> {
+    let mayLoad = 1;
+    let Defs = [BREG];
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -985,6 +1260,33 @@ def LOOPNEZ : RRI8_Inst<0x06, (outs), (ins AR:$s, ltarget:$target),
 
 def : InstAlias<"_loopnez\t$s, $target", (LOOPNEZ AR:$s, ltarget:$target)>;
 
+let isTerminator = 1, isBarrier = 1, hasSideEffects = 1, Size = 3 in {
+  def LOOPINIT : Pseudo<(outs AR:$elts), (ins AR:$eltsin),
+                       "!loopinit $elts, $eltsin", [(set AR:$elts, (int_start_loop_iterations AR:$eltsin))]>;
+}
+
+// LOOPSTART pseudo instruction reserves 9 bytes for LOOP operation and NOP operations for possible alignment.
+let hasSideEffects = 1, Size = 9 in {
+  def LOOPSTART : Pseudo<(outs), (ins AR:$s, brtarget:$target),
+                        "!loopstart $s, $target", []>;
+}
+
+// LOOPEND pseudo instruction reserves 6 bytes for Jump and NOP operations.
+let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 0, isNotDuplicable = 1, Size = 6 in {
+  def LOOPEND : Pseudo<(outs), (ins brtarget:$target),
+                      "!loopend $target", [(Xtensa_loopend bb:$target)]>;
+}
+
+let isTerminator = 1, isBarrier = 1, hasSideEffects = 1, Size = 3 in {
+  def LOOPDEC : Pseudo<(outs AR:$eltsout), (ins AR:$eltsin),
+                      "!loopdec $eltsout, $eltsin", [(set AR:$eltsout, (Xtensa_loopdec AR:$eltsin))]>;
+}
+
+let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 0, Size = 3 in {
+  def LOOPBR : Pseudo<(outs), (ins AR:$elts, brtarget:$target),
+                     "!loopbr $elts, $target", [(Xtensa_loopbr AR:$elts, bb:$target)]>;
+}
+
 //===----------------------------------------------------------------------===//
 // Mul16 Instructions
 //===----------------------------------------------------------------------===//
@@ -1033,6 +1335,12 @@ def ADD_S : FPArith_RRR<0x00, 0x0A, "add.s", fadd, 1>;
 def SUB_S : FPArith_RRR<0x01, 0x0A, "sub.s", fsub>;
 def MUL_S : FPArith_RRR<0x02, 0x0A, "mul.s", fmul, 1>;
 
+let Predicates = [HasSingleFloat] in {
+  def : Arith_Pat<f32, FPR, int_xtensa_xt_add_s, ADD_S>;
+  def : Arith_Pat<f32, FPR, int_xtensa_xt_sub_s, SUB_S>;
+  def : Arith_Pat<f32, FPR, int_xtensa_xt_mul_s, MUL_S>;
+}
+
 // FP load instructions
 let mayLoad = 1, usesCustomInserter = 1, Predicates = [HasSingleFloat] in {
   def LSI : RRI8_Inst<0x03, (outs FPR:$t), (ins mem32:$addr),
@@ -1044,20 +1352,22 @@ let mayLoad = 1, usesCustomInserter = 1, Predicates = [HasSingleFloat] in {
     let s{3-0} = addr{3-0};
   }
 
-  def LSIP : RRI8_Inst<0x03, (outs FPR:$t), (ins mem32:$addr),
-                      "lsip\t$t, $addr", []> {
-    bits<12> addr;
+  def LSIP : RRI8_Inst<0x03, (outs FPR:$t, AR:$ds), (ins AR:$s, offset8m32:$off),
+                      "lsip\t$t, $s, $off", []> {
+    bits<10> off;
 
     let r = 0x08;
-    let imm8{7-0} = addr{11-4};
-    let s{3-0} = addr{3-0};
+    let imm8{7-0} = off{9-2};
+    let Constraints = "$ds = $s,@earlyclobber $ds";
   }
 
-  def LSX : RRR_Inst<0x00, 0x08, 0x00, (outs), (ins FPR:$r, AR:$s, AR:$t),
+  def LSX : RRR_Inst<0x00, 0x08, 0x00, (outs FPR:$r), (ins AR:$s, AR:$t),
                     "lsx\t$r, $s, $t", []>;
 
-  def LSXP : RRR_Inst<0x00, 0x08, 0x01, (outs), (ins FPR:$r, AR:$s, AR:$t),
-                     "lsxp\t$r, $s, $t", []>;
+  def LSXP : RRR_Inst<0x00, 0x08, 0x01, (outs FPR:$r, AR:$ds), (ins AR:$s, AR:$t),
+                     "lsxp\t$r, $s, $t", []> {
+    let Constraints = "$ds = $s,@earlyclobber $ds";
+  }
 }
 
 def : Pat<(f32 (load addr_ish4:$addr)), (f32 (LSI mem32:$addr))>;
@@ -1073,20 +1383,22 @@ let mayStore = 1, usesCustomInserter = 1, Predicates = [HasSingleFloat] in {
     let s{3-0} = addr{3-0};
   }
 
-  def SSIP : RRI8_Inst<0x03, (outs), (ins FPR:$t, mem32:$addr),
-                      "ssip\t$t, $addr", []> {
-    bits<12> addr;
+  def SSIP : RRI8_Inst<0x03, (outs AR:$ds), (ins FPR:$t, AR:$s, offset8m32:$off),
+                      "ssip\t$t, $s, $off", []> {
+    bits<10> off;
 
     let r = 0x0C;
-    let imm8{7-0} = addr{11-4};
-    let s{3-0} = addr{3-0};
+    let imm8{7-0} = off{9-2};
+    let Constraints = "$ds = $s,@earlyclobber $ds";
   }
 
   def SSX: RRR_Inst<0x00, 0x08, 0x04, (outs), (ins FPR:$r, AR:$s, AR:$t),
                    "ssx\t$r, $s, $t", []>;
 
-  def SSXP: RRR_Inst<0x00, 0x08, 0x05, (outs), (ins FPR:$r, AR:$s, AR:$t),
-                    "ssxp\t$r, $s, $t", []>;
+  def SSXP: RRR_Inst<0x00, 0x08, 0x05, (outs AR:$ds), (ins FPR:$r, AR:$s, AR:$t),
+                    "ssxp\t$r, $s, $t", []> {
+    let Constraints = "$ds = $s,@earlyclobber $ds";
+  }
 }
 
 def : Pat<(store FPR:$t, addr_ish4:$addr), (SSI FPR:$t, mem32:$addr)>;
@@ -1113,6 +1425,16 @@ def ULT_S :  FCompare<0x05, 0x0b, "ult.s", Xtensa_cmpult, 0>;
 def ULE_S :  FCompare<0x07, 0x0b, "ule.s", Xtensa_cmpule, 0>;
 def UN_S  :  FCompare<0x01, 0x0b, "un.s",  Xtensa_cmpuo, 1>;
 
+let Predicates = [HasSingleFloat] in {
+  def : Arith_Pat<v1i1, FPR, int_xtensa_xt_ole_s, OLE_S>;
+  def : Arith_Pat<v1i1, FPR, int_xtensa_xt_ule_s, ULE_S>;
+  def : Arith_Pat<v1i1, FPR, int_xtensa_xt_olt_s, OLT_S>;
+  def : Arith_Pat<v1i1, FPR, int_xtensa_xt_ult_s, ULT_S>;
+  def : Arith_Pat<v1i1, FPR, int_xtensa_xt_oeq_s, OEQ_S>;
+  def : Arith_Pat<v1i1, FPR, int_xtensa_xt_ueq_s, UEQ_S>;
+  def : Arith_Pat<v1i1, FPR, int_xtensa_xt_un_s, UN_S>;
+}
+
 def ABS_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$r), (ins FPR:$s),
                     "abs.s\t$r, $s",
                     [(set FPR:$r, (fabs FPR:$s))]>, Requires<[HasSingleFloat]> {
@@ -1121,14 +1443,20 @@ def ABS_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$r), (ins FPR:$s),
 
 def : Pat<(fabs FPR:$s), (ABS_S $s)>;
 
-def ADDEXP_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$r), (ins FPR:$s),
-                       "addexp.s\t$r, $s", []>, Requires<[HasSingleFloat]> {
-  let t = 0x0E;
-}
+def : Pat<(f32 (int_xtensa_xt_abs_s FPR:$frs)),
+          (ABS_S FPR:$frs)>,
+          Requires<[HasSingleFloat]>;
 
-def ADDEXPM_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$r), (ins FPR:$s),
-                        "addexpm.s\t$r, $s", []>, Requires<[HasSingleFloat]> {
-  let t = 0x0F;
+let Constraints = "$dr = $r,@earlyclobber $dr" in {
+ def ADDEXP_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$dr), (ins FPR:$r, FPR:$s),
+                        "addexp.s\t$r, $s", []>, Requires<[HasSingleFloat]> {
+   let t = 0x0E;
+ }
+
+ def ADDEXPM_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$dr), (ins FPR:$r, FPR:$s),
+                         "addexpm.s\t$r, $s", []>, Requires<[HasSingleFloat]> {
+   let t = 0x0F;
+ }
 }
 
 def CEIL_S : RRR_Inst<0x00, 0x0A, 0x0B, (outs AR:$r), (ins FPR:$s, uimm4:$imm),
@@ -1151,8 +1479,10 @@ def DIV0_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$r), (ins FPR:$s),
   let t = 0x7;
 }
 
-def DIVN_S : RRR_Inst<0x00, 0x0A, 0x07, (outs FPR:$r), (ins FPR:$s, FPR:$t),
-                     "divn.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
+def DIVN_S : RRR_Inst<0x00, 0x0A, 0x07, (outs FPR:$dr), (ins FPR:$r, FPR:$s, FPR:$t),
+                     "divn.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]> {
+  let Constraints = "$dr = $r,@earlyclobber $dr";
+}
 
 def FLOAT_S : RRR_Inst<0x00, 0x0A, 0x0c, (outs FPR:$r), (ins AR:$s, uimm4:$imm),
                       "float.s\t$r, $s, $imm", []>, Requires<[HasSingleFloat]> {
@@ -1163,6 +1493,10 @@ def FLOAT_S : RRR_Inst<0x00, 0x0A, 0x0c, (outs FPR:$r), (ins AR:$s, uimm4:$imm),
 
 def : Pat<(f32 (sint_to_fp AR:$s)), (FLOAT_S AR:$s, 0)>;
 
+def : Pat<(f32 (int_xtensa_xt_float_s i32:$s, timm:$imm)),
+          (FLOAT_S AR:$s, uimm4:$imm)>,
+          Requires<[HasSingleFloat]>;
+
 def FLOOR_S : RRR_Inst<0x00, 0x0A, 0x0A, (outs AR:$r), (ins FPR:$s, uimm4:$imm),
                       "floor.s\t$r, $s, $imm", []>, Requires<[HasSingleFloat]> {
   bits<4> imm;
@@ -1170,9 +1504,10 @@ def FLOOR_S : RRR_Inst<0x00, 0x0A, 0x0A, (outs AR:$r), (ins FPR:$s, uimm4:$imm),
   let t = imm;
 }
 
-def MADDN_S : RRR_Inst<0x00, 0x0A, 0x06, (outs FPR:$r), (ins FPR:$s, FPR:$t),
+def MADDN_S : RRR_Inst<0x00, 0x0A, 0x06, (outs FPR:$r), (ins FPR:$a, FPR:$s, FPR:$t),
                       "maddn.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]> {
   let isCommutable = 0;
+  let Constraints = "$r = $a";
 }
 
 // FP multipy-add
@@ -1189,9 +1524,10 @@ def MADD_S : RRR_Inst<0x00, 0x0A, 0x04, (outs FPR:$r), (ins FPR:$a, FPR:$s, FPR:
 def : Pat<(fma FPR:$r1, FPR:$r2, FPR:$r3),
           (MADD_S $r3, $r1, $r2)>;
 
-def MKDADJ_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$r), (ins FPR:$s),
+def MKDADJ_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$dr), (ins FPR:$r, FPR:$s),
                        "mkdadj.s\t$r, $s", []>, Requires<[HasSingleFloat]> {
   let t = 0x0D;
+  let Constraints = "$dr = $r,@earlyclobber $dr";
 }
 
 def MKSADJ_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$r), (ins FPR:$s),
@@ -1206,23 +1542,29 @@ def MOV_S : RRR_Inst<0x00, 0x0A, 0x0f, (outs FPR:$r), (ins FPR:$s),
   let t = 0x00;
 }
 
-def MOVEQZ_S : RRR_Inst<0x00, 0x0B, 0x08, (outs FPR:$r), (ins FPR:$s, AR:$t),
-                       "moveqz.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
+let Constraints = "$dr = $r,@earlyclobber $dr" in {
+  def MOVEQZ_S : RRR_Inst<0x00, 0x0B, 0x08, (outs FPR:$dr), (ins FPR:$r, FPR:$s, AR:$t),
+                        "moveqz.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
 
-def MOVF_S   : RRR_Inst<0x00, 0x0B, 0x0C, (outs FPR:$r), (ins FPR:$s, BR:$t),
-                       "movf.s\t$r, $s, $t", []>, Requires<[HasBoolean, HasSingleFloat]>;
+  def MOVGEZ_S : RRR_Inst<0x00, 0x0B, 0x0B, (outs FPR:$dr), (ins FPR:$r, FPR:$s, AR:$t),
+                        "movgez.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
 
-def MOVGEZ_S : RRR_Inst<0x00, 0x0B, 0x0B, (outs FPR:$r), (ins FPR:$s, AR:$t),
-                       "movgez.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
+  def MOVLTZ_S : RRR_Inst<0x00, 0x0B, 0x0A, (outs FPR:$dr), (ins FPR:$r, FPR:$s, AR:$t),
+                        "movltz.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
 
-def MOVLTZ_S : RRR_Inst<0x00, 0x0B, 0x0A, (outs FPR:$r), (ins FPR:$s, AR:$t),
-                       "movltz.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
+  def MOVNEZ_S : RRR_Inst<0x00, 0x0B, 0x09, (outs FPR:$dr), (ins FPR:$r, FPR:$s, AR:$t),
+                        "movnez.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
+ 
+  def MOVT_S   : RRR_Inst<0x00, 0x0B, 0x0D, (outs FPR:$dr), (ins FPR:$r, FPR:$s, BR:$t),
+                        "movt.s\t$r, $s, $t",
+                        [(set FPR:$dr, (int_xtensa_xt_movt_s FPR:$r, FPR:$s, BR:$t))]>,
+                        Requires<[HasBoolean, HasSingleFloat]>;
 
-def MOVNEZ_S : RRR_Inst<0x00, 0x0B, 0x09, (outs FPR:$r), (ins FPR:$s, AR:$t),
-                       "movnez.s\t$r, $s, $t", []>, Requires<[HasSingleFloat]>;
-
-def MOVT_S   : RRR_Inst<0x00, 0x0B, 0x0D, (outs FPR:$r), (ins FPR:$s, BR:$t),
-                       "movt.s\t$r, $s, $t", []>, Requires<[HasBoolean, HasSingleFloat]>;
+  def MOVF_S   : RRR_Inst<0x00, 0x0B, 0x0C, (outs FPR:$dr), (ins FPR:$r, FPR:$s, BR:$t),
+                        "movf.s\t$r, $s, $t",
+                        [(set FPR:$dr, (int_xtensa_xt_movf_s FPR:$r, FPR:$s, BR:$t))]>,
+                        Requires<[HasBoolean, HasSingleFloat]>;
+}
 
 // FP multipy-sub
 def MSUB_S : RRR_Inst<0x00, 0x0A, 0x05, (outs FPR:$r), (ins FPR:$a, FPR:$s, FPR:$t),
@@ -1232,6 +1574,10 @@ def MSUB_S : RRR_Inst<0x00, 0x0A, 0x05, (outs FPR:$r), (ins FPR:$a, FPR:$s, FPR:
   let isReMaterializable = 0;
   let Constraints = "$r = $a";
 }
+
+// fmadd: (-r1) * r2 + r3
+def : Pat<(fma (fneg FPR:$r1), FPR:$r2, FPR:$r3),
+          (MSUB_S $r3, $r1, $r2)>;
 
 def NEXP01_S : RRR_Inst<0x00, 0x0A, 0x0F, (outs FPR:$r), (ins FPR:$s),
                        "nexp01.s\t$r, $s", []>, Requires<[HasSingleFloat]> {
@@ -1281,6 +1627,10 @@ def TRUNC_S : RRR_Inst<0x00, 0x0A, 0x09, (outs AR:$r), (ins FPR:$s, uimm4:$imm),
 
 def : Pat<(i32 (fp_to_sint FPR:$s)), (TRUNC_S FPR:$s, 0)>;
 
+def : Pat<(i32 (int_xtensa_xt_trunc_s f32:$frs, timm:$imm)),
+          (TRUNC_S FPR:$frs, uimm4:$imm)>,
+          Requires<[HasSingleFloat]>;
+
 def UFLOAT_S : RRR_Inst<0x00, 0x0A, 0x0D, (outs FPR:$r), (ins AR:$s, uimm4:$imm),
                        "ufloat.s\t$r, $s, $imm", []>, Requires<[HasSingleFloat]>  {
   bits<4> imm;
@@ -1289,6 +1639,10 @@ def UFLOAT_S : RRR_Inst<0x00, 0x0A, 0x0D, (outs FPR:$r), (ins AR:$s, uimm4:$imm)
 }
 
 def : Pat<(f32 (uint_to_fp AR:$s)), (UFLOAT_S AR:$s, 0)>;
+
+def : Pat<(f32 (int_xtensa_xt_ufloat_s i32:$s, timm:$imm)),
+          (UFLOAT_S AR:$s, uimm4:$imm)>,
+          Requires<[HasSingleFloat]>;
 
 def UTRUNC_S : RRR_Inst<0x00, 0x0A, 0x0e, (outs AR:$r), (ins FPR:$s, uimm4:$imm),
                        "utrunc.s\t$r, $s, $imm", []>, Requires<[HasSingleFloat]>  {
@@ -1299,6 +1653,10 @@ def UTRUNC_S : RRR_Inst<0x00, 0x0A, 0x0e, (outs AR:$r), (ins FPR:$s, uimm4:$imm)
 
 def : Pat<(i32 (fp_to_uint FPR:$s)), (UTRUNC_S FPR:$s, 0)>;
 
+def : Pat<(i32 (int_xtensa_xt_utrunc_s f32:$frs, timm:$imm)),
+          (UTRUNC_S FPR:$frs, uimm4:$imm)>,
+          Requires<[HasSingleFloat]>;
+
 def WFR : RRR_Inst<0x00, 0x0A, 0x0f, (outs FPR:$r), (ins AR:$s),
                   "wfr\t$r, $s",
                   [(set FPR:$r, (bitconvert AR:$s))]>, Requires<[HasSingleFloat]>  {
@@ -1308,6 +1666,11 @@ def WFR : RRR_Inst<0x00, 0x0A, 0x0f, (outs FPR:$r), (ins AR:$s),
 let AddedComplexity = 10 in
 def : Pat<(f32 (load (Xtensa_pcrel_wrapper tconstpool:$in))),
           (WFR (L32R tconstpool:$in))>;
+
+// Load from aggregate constant placed as Global Variable
+let AddedComplexity = 10 in
+def : Pat<(f32 (load (add i32:$s, (Xtensa_pcrel_wrapper tconstpool:$in)))),
+          (LSI (ADD i32:$s, (L32R tconstpool:$in)), 0)>;
 
 //===----------------------------------------------------------------------===//
 // SelectCC and BranchCC instructions with FP operands
@@ -1399,7 +1762,7 @@ let Predicates = [HasRegionProtection] in {
 // Debug instructions
 //===----------------------------------------------------------------------===//
 
-let isBarrier = 1, isTerminator = 1 in {
+let isBarrier = 1, isTerminator = 1, isTrap = 1 in {
   def BREAK : RRR_Inst<0x00, 0x00, 0x00, (outs), (ins uimm4:$s, uimm4:$t),
                       "break\t$s, $t", []>, Requires<[HasDebug]> {
     let r = 0x04;
@@ -1417,7 +1780,22 @@ let isBarrier = 1, isTerminator = 1 in {
 
 def : InstAlias<"_break.n\t$imm", (BREAK_N uimm4:$imm)>;
 
-def : Pat<(trap), (BREAK (i32 1), (i32 15))>;
+let AddedComplexity = 10 in {
+  def : Pat<(trap), (ILL)>;
+  def : Pat<(debugtrap), (ILL)>;
+}
+
+let AddedComplexity = 15 in {
+  def : Pat<(trap), (ILL_N)>,
+      Requires<[HasDensity]>;
+  def : Pat<(debugtrap), (ILL_N)>,
+      Requires<[HasDensity]>;
+}
+
+let AddedComplexity = 20 in {
+  def : Pat<(debugtrap), (BREAK (i32 1), (i32 15))>,
+      Requires<[HasDebug]>;
+}
 
 // Load instruction
 def LDDR32P : RRR_Inst<0x00, 0x00, 0x00, (outs AR:$s), (ins),
@@ -1499,6 +1877,266 @@ def RFI : RRR_Inst<0x00, 0x00, 0x00, (outs), (ins uimm4:$imm),
 }
 
 //===----------------------------------------------------------------------===//
+// S32C1I
+//===----------------------------------------------------------------------===//
+
+let mayStore = 1, mayLoad = 1, Predicates = [HasS32C1I] in {
+  def S32C1I : RRI8_Inst<0x02, (outs AR:$a), (ins AR:$t, mem32:$addr),
+                        "s32c1i\t$t, $addr", []> {
+    bits<12> addr;
+
+    let r = 0x0e;
+    let Uses = [SCOMPARE1];
+    let Constraints = "$a = $t";
+    let imm8{7-0} = addr{11-4};
+    let s{3-0} = addr{3-0};
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Atomic patterns
+//===----------------------------------------------------------------------===//
+
+// Atomic load/store are available under both +s32c1i and +force-atomics.
+// Fences will be inserted for atomic load/stores according to the logic in
+// XtensaTargetLowering.
+let Predicates = [HasAtomicLdSt] in {
+  def : Pat<(i32 (atomic_load_8  addr_ish1:$addr)), (L8UI addr_ish1:$addr)>;
+  def : Pat<(i32 (atomic_load_16 addr_ish2:$addr)), (L16UI addr_ish2:$addr)>;
+  def : Pat<(i32 (atomic_load_32 addr_ish4:$addr)), (L32I addr_ish4:$addr)>;
+
+  def : Pat<(atomic_store_8  AR:$t, addr_ish1:$addr), (S8I AR:$t, addr_ish1:$addr)>;
+  def : Pat<(atomic_store_16 AR:$t, addr_ish2:$addr), (S16I AR:$t, addr_ish2:$addr)>;
+  def : Pat<(atomic_store_32 AR:$t, addr_ish4:$addr), (S32I AR:$t, addr_ish4:$addr)>;
+}
+
+let usesCustomInserter = 1, Predicates = [HasS32C1I] in {
+  def ATOMIC_CMP_SWAP_32_P : Pseudo<(outs AR:$dst), (ins AR:$ptr, AR:$cmp, AR:$swap),
+                                   "!atomic_cmp_swap_32_p, $dst, $ptr, $cmp, $swap",
+                                   [(set AR:$dst, (atomic_cmp_swap_i32 AR:$ptr, AR:$cmp, AR:$swap))]>;
+}
+
+//===----------------------------------------------------------------------===//
+// Xtensa CONSTPOOL_ENTRY
+//===----------------------------------------------------------------------===//
+
+// An operand for the CONSTPOOL_ENTRY pseudo-instruction.
+def cpinst_operand : Operand<i32> {
+  // let PrintMethod = "printCPInstOperand";
+}
+
+// CONSTPOOL_ENTRY - This instruction represents a floating constant pool in
+// the function.  The first operand is the ID# for this instruction, the second
+// is the index into the MachineConstantPool that this is, the third is the
+// size in bytes of this constant pool entry.
+//
+let hasSideEffects = 0, isNotDuplicable = 1 in
+def CONSTPOOL_ENTRY :
+Pseudo<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                      i32imm:$size), "foo", []>;
+
+//===----------------------------------------------------------------------===//
+// Xtensa ESP32S2 Instructions
+//===----------------------------------------------------------------------===//
+let Predicates = [HasESP32S2Ops] in {
+  def WR_MASK_GPIO_OUT : RRR_Inst<0x0, 0x06, 0x0, (outs), (ins AR:$s, AR:$t),
+                                 "wr_mask_gpio_out\t$s, $t", []> {
+    let r = 0x2;
+  }
+
+  def SET_BIT_GPIO_OUT : RRR_Inst<0x0, 0x06, 0x0, (outs), (ins select_256:$imm),
+                                 "set_bit_gpio_out\t$imm", []> {
+    bits<8> imm;
+
+    let r = 0x1;
+    let s = imm{7-4};
+    let t = imm{3-0};
+  }
+
+  def CLR_BIT_GPIO_OUT : RRR_Inst<0x0, 0x06, 0x0, (outs), (ins select_256:$imm),
+                                 "clr_bit_gpio_out\t$imm", []> {
+    bits<8> imm;
+
+    let r = 0x0;
+    let s = imm{7-4};
+    let t = imm{3-0};
+  }
+
+  def GET_GPIO_IN : RRR_Inst<0x0, 0x06, 0x0, (outs AR:$t), (ins),
+                            "get_gpio_in\t$t", []> {
+    let r = 0x3;
+    let s = 0x0;
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Xtensa ESP32S3 Instructions
+//===----------------------------------------------------------------------===//
+
+let Predicates = [HasESP32S3Ops] in {
+  def EE_WR_MASK_GPIO_OUT : RRR_Inst<0x04, 0x02, 0x07, (outs), (ins AR:$t, AR:$s),
+                                    "ee.wr_mask_gpio_out\t$t, $s", []> {
+    let r = 0x4;
+  }
+
+  def EE_SET_BIT_GPIO_OUT : RRR_Inst<0x04, 0x05, 0x07, (outs), (ins select_256:$imm),
+                                "ee.set_bit_gpio_out\t$imm", []> {
+    bits<8> imm;
+
+    let r = 0x4;
+    let s = imm{7-4};
+    let t = imm{3-0};
+  }
+
+  def EE_CLR_BIT_GPIO_OUT : RRR_Inst<0x04, 0x06, 0x07, (outs), (ins select_256:$imm),
+                                "ee.clr_bit_gpio_out\t$imm", []> {
+    bits<8> imm;
+
+    let r = 0x4;
+    let s = imm{7-4};
+    let t = imm{3-0};
+  }
+
+  def EE_GET_GPIO_IN : RRR_Inst<0x04, 0x05, 0x06, (outs AR:$t), (ins),
+                               "ee.get_gpio_in\t$t", []> {
+    let r = 0x0;
+    let s = 0x8;
+  }
+}
+include "XtensaS3DSPInstrInfo.td"
+
+//===----------------------------------------------------------------------===//
+// FP intrinsic patterns
+//===----------------------------------------------------------------------===//
+let Predicates = [HasSingleFloat] in {
+
+  def ADDEXP_S_PAT :Pat<(f32 (int_xtensa_xt_addexp_s FPR:$frr, FPR:$frs)),
+  (ADDEXP_S FPR:$frr, FPR:$frs)>;
+
+  def ADDEXPM_S_PAT :Pat<(f32 (int_xtensa_xt_addexpm_s FPR:$frr, FPR:$frs)),
+  (ADDEXPM_S FPR:$frr, FPR:$frs)>;
+
+  def CEIL_S_PAT :Pat<(i32 (int_xtensa_xt_ceil_s FPR:$frs, timm:$imm_t)),
+  (CEIL_S FPR:$frs, timm:$imm_t)>;
+
+  def DIV0_S_PAT :Pat<(f32 (int_xtensa_xt_div0_s FPR:$frs)),
+  (DIV0_S FPR:$frs)>;
+
+  def DIVN_S_PAT :Pat<(f32 (int_xtensa_xt_divn_s FPR:$frr, FPR:$frs, FPR:$frt)),
+  (DIVN_S FPR:$frr, FPR:$frs, FPR:$frt)>;
+
+  def FLOOR_S_PAT :Pat<(i32 (int_xtensa_xt_floor_s FPR:$frs, timm:$imm_t)),
+  (FLOOR_S FPR:$frs, timm:$imm_t)>;
+
+  def LSI_PAT :Pat<(f32 (int_xtensa_xt_lsi AR:$ars, timm:$imm8x4)),
+  (LSI AR:$ars, timm:$imm8x4)>;
+
+  def LSX_PAT :Pat<(f32 (int_xtensa_xt_lsx AR:$ars, AR:$art)),
+  (LSX AR:$ars, AR:$art)>;
+
+  def MADD_S_PAT :Pat<(f32 (int_xtensa_xt_madd_s FPR:$frr, FPR:$frs, FPR:$frt)),
+  (MADD_S FPR:$frr, FPR:$frs, FPR:$frt)>;
+
+  def MADDN_S_PAT :Pat<(f32 (int_xtensa_xt_maddn_s FPR:$frr, FPR:$frs, FPR:$frt)),
+  (MADDN_S FPR:$frr, FPR:$frs, FPR:$frt)>;
+
+  def MKDADJ_S_PAT :Pat<(f32 (int_xtensa_xt_mkdadj_s FPR:$frr, FPR:$frs)),
+  (MKDADJ_S FPR:$frr, FPR:$frs)>;
+
+  def MKSADJ_S_PAT :Pat<(f32 (int_xtensa_xt_mksadj_s FPR:$frs)),
+  (MKSADJ_S FPR:$frs)>;
+
+  def MOV_S_PAT :Pat<(f32 (int_xtensa_xt_mov_s FPR:$frs)),
+  (MOV_S FPR:$frs)>;
+
+  def MOVEQZ_S_PAT :Pat<(f32 (int_xtensa_xt_moveqz_s FPR:$frr, FPR:$frs, AR:$art)),
+  (MOVEQZ_S FPR:$frr, FPR:$frs, AR:$art)>;
+
+  def MOVGEZ_S_PAT :Pat<(f32 (int_xtensa_xt_movgez_s FPR:$frr, FPR:$frs, AR:$art)),
+  (MOVGEZ_S FPR:$frr, FPR:$frs, AR:$art)>;
+
+  def MOVLTZ_S_PAT :Pat<(f32 (int_xtensa_xt_movltz_s FPR:$frr, FPR:$frs, AR:$art)),
+  (MOVLTZ_S FPR:$frr, FPR:$frs, AR:$art)>;
+
+  def MOVNEZ_S_PAT :Pat<(f32 (int_xtensa_xt_movnez_s FPR:$frr, FPR:$frs, AR:$art)),
+  (MOVNEZ_S FPR:$frr, FPR:$frs, AR:$art)>;
+
+  def MSUB_S_PAT :Pat<(f32 (int_xtensa_xt_msub_s FPR:$frr, FPR:$frs, FPR:$frt)),
+  (MSUB_S FPR:$frr, FPR:$frs, FPR:$frt)>;
+
+  def NEG_S_PAT :Pat<(f32 (int_xtensa_xt_neg_s FPR:$frs)),
+  (NEG_S FPR:$frs)>;
+
+  def NEXP01_S_PAT :Pat<(f32 (int_xtensa_xt_nexp01_s FPR:$frs)),
+  (NEXP01_S FPR:$frs)>;
+
+  def RECIP0_S_PAT :Pat<(f32 (int_xtensa_xt_recip0_s FPR:$frs)),
+  (RECIP0_S FPR:$frs)>;
+
+  def RFR_PAT :Pat<(i32 (int_xtensa_xt_rfr FPR:$frs)),
+  (RFR FPR:$frs)>;
+
+  def ROUND_S_PAT :Pat<(i32 (int_xtensa_xt_round_s FPR:$frs, timm:$imm_t)),
+  (ROUND_S FPR:$frs, timm:$imm_t)>;
+
+  def RSQRT0_S_PAT :Pat<(f32 (int_xtensa_xt_rsqrt0_s FPR:$frs)),
+  (RSQRT0_S FPR:$frs)>;
+
+  def RUR_FCR_PAT :Pat<(i32 (int_xtensa_xt_rur_fcr )),
+  (RUR FCR)>;
+
+  def RUR_FSR_PAT :Pat<(i32 (int_xtensa_xt_rur_fsr )),
+  (RUR FSR )>;
+
+  def SQRT0_S_PAT :Pat<(f32 (int_xtensa_xt_sqrt0_s FPR:$frs)),
+  (SQRT0_S FPR:$frs)>;
+
+  def SSI_PAT :Pat<(int_xtensa_xt_ssi FPR:$frt, AR:$ars, timm:$imm8x4),
+  (SSI FPR:$frt, AR:$ars, timm:$imm8x4)>;
+
+  def SSIP_PAT :Pat<(i32 (int_xtensa_xt_ssip FPR:$frt, AR:$ars, timm:$imm8x4)),
+  (SSIP FPR:$frt, AR:$ars, timm:$imm8x4)>;
+
+  def SSX_PAT :Pat<(int_xtensa_xt_ssx FPR:$frr, AR:$ars, AR:$art),
+  (SSX FPR:$frr, AR:$ars, AR:$art)>;
+
+  def SSXP_PAT :Pat<(i32 (int_xtensa_xt_ssxp FPR:$frr, AR:$ars, AR:$art)),
+  (SSXP FPR:$frr, AR:$ars, AR:$art)>;
+
+  def WFR_PAT :Pat<(f32 (int_xtensa_xt_wfr AR:$ars)),
+  (WFR AR:$ars)>;
+
+  def WUR_FCR_PAT :Pat<(int_xtensa_xt_wur_fcr AR:$art),
+  (WUR_FCR AR:$art)>;
+
+  def WUR_FSR_PAT :Pat<(int_xtensa_xt_wur_fsr AR:$art),
+  (WUR_FSR AR:$art)>;
+
+}
+
+//===----------------------------------------------------------------------===//
+// External Registers read/write instructions
+//===----------------------------------------------------------------------===//
+
+def RER : RRR_Inst<0x00, 0x00, 0x04, (outs AR:$t), (ins AR:$s),
+                  "rer\t$t, $s", []> {
+  let r = 0x6;
+}
+
+def WER : RRR_Inst<0x00, 0x00, 0x04, (outs), (ins AR:$t, AR:$s),
+                  "wer\t$t, $s", []> {
+  let r = 0x7;
+  let hasSideEffects = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // DSP Instructions
 //===----------------------------------------------------------------------===//
 include "XtensaDSPInstrInfo.td"
+
+//===----------------------------------------------------------------------===//
+// HiFi3 Instructions
+//===----------------------------------------------------------------------===//
+include "XtensaHIFIInstrFormats.td"
+include "XtensaHIFIInstrInfo.td"
+include "XtensaHIFIInstrPatterns.td"

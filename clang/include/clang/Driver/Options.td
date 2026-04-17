@@ -243,6 +243,8 @@ def m_ve_Features_Group : OptionGroup<"<ve features group>">,
 def m_loongarch_Features_Group : OptionGroup<"<loongarch features group>">,
                                  Group<m_Group>, DocName<"LoongArch">,
                                  Visibility<[ClangOption, CLOption, FlangOption]>;
+def m_xtensa_Features_Group : OptionGroup<"<xtensa features group>">,
+                              Group<m_Group>, DocName<"Xtensa">;
 
 def m_libc_Group : OptionGroup<"<m libc group>">, Group<m_mips_Features_Group>,
                    Flags<[HelpHidden]>;
@@ -5123,6 +5125,16 @@ def msave_restore : Flag<["-"], "msave-restore">, Group<m_riscv_Features_Group>,
   HelpText<"Enable using library calls for save and restore">;
 def mno_save_restore : Flag<["-"], "mno-save-restore">, Group<m_riscv_Features_Group>,
   HelpText<"Disable using library calls for save and restore">;
+def mcm_popret : Flag<["-"], "mcm-popret">, Group<m_Group>,
+  HelpText<"Disable the cm.popret/cm.popretz workaround and use canonical Zcmp popret behavior">;
+def mno_cm_popret : Flag<["-"], "mno-cm-popret">, Group<m_Group>,
+  HelpText<"Enable the cm.popret/cm.popretz workaround for cores that need the popret compatibility behavior">;
+def mcm_push_reverse : Flag<["-"], "mcm-push-reverse">,
+  Group<m_Group>,
+  HelpText<"Disable the cm.push/cm.pop register-order workaround and use canonical Zcmp push/pop ordering">;
+def mno_cm_push_reverse : Flag<["-"], "mno-cm-push-reverse">,
+  Group<m_Group>,
+  HelpText<"Enable the cm.push/cm.pop register-order workaround for cores that need direct push/pop compatibility ordering">;
 } // let Flags = [TargetSpecific]
 let Flags = [TargetSpecific] in {
 def menable_experimental_extensions : Flag<["-"], "menable-experimental-extensions">, Group<m_Group>,
@@ -6812,6 +6824,20 @@ def m3dnow : Flag<["-"], "m3dnow">;
 def mno_3dnow : Flag<["-"], "mno-3dnow">;
 def m3dnowa : Flag<["-"], "m3dnowa">;
 def mno_3dnowa : Flag<["-"], "mno-3dnowa">;
+
+// Xtensa feature flags
+def malways_memw : Flag<["-"], "malways-memw">, Group<m_xtensa_Features_Group>;
+def mfix_esp32_psram_cache_issue : Flag<["-"], "mfix-esp32-psram-cache-issue">, Group<m_xtensa_Features_Group>;
+def mfix_esp32_psram_cache_strategy_EQ : Joined<["-"], "mfix-esp32-psram-cache-strategy=">, Group<m_xtensa_Features_Group>,
+    HelpText<" Psram cache fix strategies : memw, nops">,
+    Values<"memw, nops">;
+def mlongcalls : Flag<["-"], "mlongcalls">, Group<m_xtensa_Features_Group>;
+def mtext_section_literals : Flag<["-"], "mtext-section-literals">, Group<m_xtensa_Features_Group>;
+def mfast_int_min32 : Flag<["-"], "mfast-int-min32">, Group<m_xtensa_Features_Group>,
+  Flags<[NoXarchOption]>,
+  Visibility<[ClangOption, CC1Option]>,
+  HelpText<"Set bit width of the _FAST_ int type to 32">,
+  MarshallingInfoFlag<LangOpts<"FastIntMin32">>;
 
 // These are legacy user-facing driver-level option spellings. They are always
 // aliases for options that are spelled using the more common Unix / GNU flag

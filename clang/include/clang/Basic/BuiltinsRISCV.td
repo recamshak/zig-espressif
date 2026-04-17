@@ -153,6 +153,9 @@ def ntl_store : RISCVBuiltin<"void(...)">;
 let Features = "zihintpause", Attributes = [NoThrow] in
 def pause : RISCVBuiltin<"void()">;
 
+include "BuiltinsRISCVESPV.td"
+include "BuiltinsRISCVESPDSP.td"
+include "BuiltinsRISCVESPVM.td"
 //===----------------------------------------------------------------------===//
 // XCV extensions.
 //===----------------------------------------------------------------------===//

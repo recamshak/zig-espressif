@@ -14,6 +14,7 @@
 #include "XtensaTargetStreamer.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
@@ -66,6 +67,43 @@ bool Xtensa::isValidAddrOffsetForOpcode(unsigned Opcode, int64_t Offset) {
     break;
   case Xtensa::LEA_ADD:
     return (Offset >= -128 && Offset <= 127);
+  case Xtensa::AE_L64_I:
+  case Xtensa::AE_S64_I:
+  case Xtensa::AE_S32X2_I:
+  case Xtensa::AE_L32X2_I:
+  case Xtensa::AE_S16X4_I:
+  case Xtensa::AE_L16X4_I:
+  case Xtensa::AE_LALIGN64_I:
+  case Xtensa::AE_SALIGN64_I:
+    return (Offset >= -64 && Offset <= 56);
+  case Xtensa::AE_S64_IP:
+  case Xtensa::AE_L64_IP:
+  case Xtensa::AE_S32X2_IP:
+  case Xtensa::AE_L32X2_IP:
+  case Xtensa::AE_S16X4_IP:
+  case Xtensa::AE_L16X4_IP:
+    return (Offset >= 0 && Offset <= 56);
+  case Xtensa::AE_L16X2M_I:
+  case Xtensa::AE_L16X2M_IU:
+  case Xtensa::AE_L32F24_I:
+  case Xtensa::AE_L32F24_IP:
+  case Xtensa::AE_L32M_I:
+  case Xtensa::AE_L32M_IU:
+  case Xtensa::AE_L32_I:
+  case Xtensa::AE_L32_IP:
+  case Xtensa::AE_S16X2M_I:
+  case Xtensa::AE_S16X2M_IU:
+  case Xtensa::AE_S24RA64S_I:
+  case Xtensa::AE_S24RA64S_IP:
+  case Xtensa::AE_S32F24_L_I:
+  case Xtensa::AE_S32F24_L_IP:
+  case Xtensa::AE_S32M_I:
+  case Xtensa::AE_S32M_IU:
+  case Xtensa::AE_S32RA64S_I:
+  case Xtensa::AE_S32RA64S_IP:
+  case Xtensa::AE_S32_L_I:
+  case Xtensa::AE_S32_L_IP:
+    return (Offset >= -32 && Offset <= 28);
   default:
     // assume that MI is 32-bit load/store operation
     Scale = 4;
@@ -200,6 +238,33 @@ bool Xtensa::checkRegister(MCRegister RegNo, const FeatureBitset &FeatureBits,
   case Xtensa::WINDOWBASE:
   case Xtensa::WINDOWSTART:
     return FeatureBits[Xtensa::FeatureWindowed];
+  case Xtensa::ATOMCTL:
+  case Xtensa::SCOMPARE1:
+    return FeatureBits[Xtensa::FeatureS32C1I];
+    return FeatureBits[Xtensa::FeatureWindowed];
+  case Xtensa::EXPSTATE:
+    return FeatureBits[Xtensa::FeatureEXPSTATE];
+  case Xtensa::GPIO_OUT_S2:
+    return FeatureBits[Xtensa::FeatureESP32S2Ops];
+  case Xtensa::ACCX_0:
+  case Xtensa::ACCX_1:
+  case Xtensa::QACC_H_0:
+  case Xtensa::QACC_H_1:
+  case Xtensa::QACC_H_2:
+  case Xtensa::QACC_H_3:
+  case Xtensa::QACC_H_4:
+  case Xtensa::QACC_L_0:
+  case Xtensa::QACC_L_1:
+  case Xtensa::QACC_L_2:
+  case Xtensa::QACC_L_3:
+  case Xtensa::QACC_L_4:
+  case Xtensa::GPIO_OUT_S3:
+  case Xtensa::FFT_BIT_WIDTH:
+  case Xtensa::UA_STATE_0:
+  case Xtensa::UA_STATE_1:
+  case Xtensa::UA_STATE_2:
+  case Xtensa::UA_STATE_3:
+    return FeatureBits[Xtensa::FeatureESP32S3Ops];
   case Xtensa::NoRegister:
     return false;
   }
@@ -208,7 +273,7 @@ bool Xtensa::checkRegister(MCRegister RegNo, const FeatureBitset &FeatureBits,
 }
 
 // Get Xtensa User Register by encoding value.
-MCRegister Xtensa::getUserRegister(unsigned Code, const MCRegisterInfo &MRI) {
+MCRegister Xtensa::getUserRegister(unsigned Code, const MCRegisterInfo &MRI, const FeatureBitset &FeatureBits) {
   MCRegister UserReg = Xtensa::NoRegister;
 
   if (MRI.getEncodingValue(Xtensa::FCR) == Code) {
@@ -223,6 +288,50 @@ MCRegister Xtensa::getUserRegister(unsigned Code, const MCRegisterInfo &MRI) {
     UserReg = Xtensa::F64S;
   } else if (MRI.getEncodingValue(Xtensa::THREADPTR) == Code) {
     UserReg = Xtensa::THREADPTR;
+  } else if (MRI.getEncodingValue(Xtensa::GPIO_OUT_S2) == Code &&
+             FeatureBits[Xtensa::FeatureESP32S2Ops]) {
+    UserReg = Xtensa::GPIO_OUT_S2;
+  } else if (MRI.getEncodingValue(Xtensa::EXPSTATE) == Code) {
+    UserReg = Xtensa::EXPSTATE;
+  } else if (MRI.getEncodingValue(Xtensa::GPIO_OUT_S3) == Code) {
+    UserReg = Xtensa::GPIO_OUT_S3;
+  } else if (MRI.getEncodingValue(Xtensa::ACCX_0) == Code &&
+             FeatureBits[Xtensa::FeatureESP32S3Ops]) {
+    UserReg = Xtensa::ACCX_0;
+  } else if (MRI.getEncodingValue(Xtensa::ACCX_1) == Code) {
+    UserReg = Xtensa::ACCX_1;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_H_0) == Code) {
+    UserReg = Xtensa::QACC_H_0;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_H_1) == Code) {
+    UserReg = Xtensa::QACC_H_1;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_H_2) == Code) {
+    UserReg = Xtensa::QACC_H_2;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_H_3) == Code) {
+    UserReg = Xtensa::QACC_H_3;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_H_4) == Code) {
+    UserReg = Xtensa::QACC_H_4;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_L_0) == Code) {
+    UserReg = Xtensa::QACC_L_0;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_L_1) == Code) {
+    UserReg = Xtensa::QACC_L_1;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_L_2) == Code) {
+    UserReg = Xtensa::QACC_L_2;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_L_3) == Code) {
+    UserReg = Xtensa::QACC_L_3;
+  } else if (MRI.getEncodingValue(Xtensa::QACC_L_4) == Code) {
+    UserReg = Xtensa::QACC_L_4;
+  } else if (MRI.getEncodingValue(Xtensa::FFT_BIT_WIDTH) == Code) {
+    UserReg = Xtensa::FFT_BIT_WIDTH;
+  } else if (MRI.getEncodingValue(Xtensa::SAR_BYTE) == Code) {
+    UserReg = Xtensa::SAR_BYTE;
+  } else if (MRI.getEncodingValue(Xtensa::UA_STATE_0) == Code) {
+    UserReg = Xtensa::UA_STATE_0;
+  } else if (MRI.getEncodingValue(Xtensa::UA_STATE_1) == Code) {
+    UserReg = Xtensa::UA_STATE_1;
+  } else if (MRI.getEncodingValue(Xtensa::UA_STATE_2) == Code) {
+    UserReg = Xtensa::UA_STATE_2;
+  } else if (MRI.getEncodingValue(Xtensa::UA_STATE_3) == Code) {
+    UserReg = Xtensa::UA_STATE_3;
   }
 
   return UserReg;
@@ -232,6 +341,9 @@ static MCAsmInfo *createXtensaMCAsmInfo(const MCRegisterInfo &MRI,
                                         const Triple &TT,
                                         const MCTargetOptions &Options) {
   MCAsmInfo *MAI = new XtensaMCAsmInfo(TT);
+  MCCFIInstruction Inst = MCCFIInstruction::cfiDefCfa(
+      nullptr, MRI.getDwarfRegNum(Xtensa::SP, true), 0);
+  MAI->addInitialFrameState(Inst);
   return MAI;
 }
 
@@ -257,6 +369,8 @@ static MCRegisterInfo *createXtensaMCRegisterInfo(const Triple &TT) {
 
 static MCSubtargetInfo *
 createXtensaMCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef FS) {
+   if (CPU.empty())
+     CPU = "generic";
   return createXtensaMCSubtargetInfoImpl(TT, CPU, CPU, FS);
 }
 
@@ -269,6 +383,10 @@ createXtensaAsmTargetStreamer(MCStreamer &S, formatted_raw_ostream &OS,
 static MCTargetStreamer *
 createXtensaObjectTargetStreamer(MCStreamer &S, const MCSubtargetInfo &STI) {
   return new XtensaTargetELFStreamer(S);
+}
+
+static MCTargetStreamer *createXtensaNullTargetStreamer(MCStreamer &S) {
+  return new XtensaTargetStreamer(S);
 }
 
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeXtensaTargetMC() {
@@ -307,4 +425,8 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeXtensaTargetMC() {
   // Register the ELF target streamer.
   TargetRegistry::RegisterObjectTargetStreamer(
       getTheXtensaTarget(), createXtensaObjectTargetStreamer);
+
+  // Register the null target streamer.
+  TargetRegistry::RegisterNullTargetStreamer(getTheXtensaTarget(),
+                                              createXtensaNullTargetStreamer);
 }

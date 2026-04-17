@@ -64,10 +64,6 @@ public:
 
   void remapInstruction(MCInst &Instr) const;
 
-  Expected<bool> onSymbolStart(SymbolInfoTy &Symbol, uint64_t &Size,
-                               ArrayRef<uint8_t> Bytes,
-                               uint64_t Address) const override;
-
 private:
   bool makeBundle(ArrayRef<uint8_t> Bytes, uint64_t Address,
                   uint64_t &BytesToSkip, raw_ostream &CS) const;
@@ -606,18 +602,6 @@ DecodeStatus HexagonDisassembler::getSingleInstruction(MCInst &MI, MCInst &MCB,
       return MCDisassembler::Fail;
   }
   return Result;
-}
-
-Expected<bool> HexagonDisassembler::onSymbolStart(SymbolInfoTy &Symbol,
-                                                  uint64_t &Size,
-                                                  ArrayRef<uint8_t> Bytes,
-                                                  uint64_t Address) const {
-  // At the start of a symbol, force a fresh packet by resetting any
-  // in-progress bundle state. This prevents packets from straddling label
-  // boundaries when data (e.g. jump tables) appears in between.
-  Size = 0;
-  resetBundle();
-  return true;
 }
 
 static DecodeStatus DecodeRegisterClass(MCInst &Inst, unsigned RegNo,

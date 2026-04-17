@@ -182,11 +182,8 @@ const FormatToken *LeftRightQualifierAlignmentFixer::analyzeRight(
   // We only need to think about streams that begin with a qualifier.
   if (Tok->isNot(QualifierType))
     return Tok;
-
-  const auto *Next = Tok->getNextNonComment();
-
   // Don't concern yourself if nothing follows the qualifier.
-  if (!Next)
+  if (!Tok->Next)
     return Tok;
 
   // Skip qualifiers to the left to find what preceeds the qualifiers.
@@ -250,15 +247,9 @@ const FormatToken *LeftRightQualifierAlignmentFixer::analyzeRight(
   }();
 
   // Find the last qualifier to the right.
-  const auto *LastQual = Tok;
-  for (; isQualifier(Next); Next = Next->getNextNonComment())
-    LastQual = Next;
-
-  if (!LastQual || !Next ||
-      (LastQual->isOneOf(tok::kw_const, tok::kw_volatile) &&
-       Next->isOneOf(Keywords.kw_override, Keywords.kw_final))) {
-    return Tok;
-  }
+  const FormatToken *LastQual = Tok;
+  while (isQualifier(LastQual->getNextNonComment()))
+    LastQual = LastQual->getNextNonComment();
 
   // If this qualifier is to the right of a type or pointer do a partial sort
   // and return.
