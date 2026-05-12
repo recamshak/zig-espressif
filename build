@@ -206,4 +206,5 @@ $ZIG build \
   -Dstrip \
   -Dtarget="$TARGET" \
   -Dcpu="$MCPU" \
+  -Dno-langref \
   -Dversion-string="$ZIG_VERSION"
